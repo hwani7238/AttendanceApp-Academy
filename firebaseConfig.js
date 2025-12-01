@@ -1,10 +1,10 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-// 출결 앱에 필수적인 인증(Authentication)과 Firestore 데이터베이스를 추가합니다.
-import { getAuth } from "firebase/auth";
+// onAuthStateChanged를 추가로 불러옵니다 (로그인 상태 감지용)
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Your web app's Firebase configuration (사용자님의 설정 정보)
+// Your web app's Firebase configuration
 const firebaseConfig = {
     apiKey: "AIzaSyDU6_hrIVyF93PGFNROmnFj7X-3rSrNq3s",
     authDomain: "whee-music-academy.firebaseapp.com",
@@ -28,5 +28,15 @@ export const auth = getAuth(app);
 // 2. Firestore 데이터베이스 (출결 기록, 학생/강사 정보 저장)
 export const db = getFirestore(app); 
 
-// Analytics는 개발 초기에는 필수가 아니므로 주석 처리하거나 제거했습니다.
-// const analytics = getAnalytics(app);
+// ✅ [핵심 추가] App.js에서 호출하는 초기화 함수
+// 이 함수가 있어야 앱이 켜질 때 "로그인 상태인지 아닌지"를 확인하고 넘어갈 수 있습니다.
+export const initializeAuth = () => {
+  return new Promise((resolve) => {
+    // Firebase가 로그인 정보를 불러올 때까지 기다립니다.
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // 확인이 끝나면 구독을 해제하고 '완료(true)' 신호를 보냅니다.
+      unsubscribe();
+      resolve(true);
+    });
+  });
+};

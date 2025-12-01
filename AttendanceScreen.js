@@ -5,6 +5,10 @@ import { collection, addDoc, query, where, getDocs, updateDoc, doc, increment } 
 import { Ionicons } from '@expo/vector-icons'; 
 import { ResponsiveLayout } from './ResponsiveHandler';
 
+// ==========================================================
+// 1. Google Apps Script 연동 관련 상수 및 로직 모두 제거됨
+// ==========================================================
+
 export default function AttendanceScreen({ navigation }) {
   const [pin, setPin] = useState(""); 
   const [time, setTime] = useState(new Date());
@@ -83,7 +87,7 @@ export default function AttendanceScreen({ navigation }) {
     }
   };
 
-  // 1. 학생 조회
+  // 학생 조회
   const checkStudent = async (enteredPin) => {
     try {
       const q = query(collection(db, "students"), where("pinNumber", "==", enteredPin));
@@ -96,6 +100,7 @@ export default function AttendanceScreen({ navigation }) {
 
       const foundStudents = querySnapshot.docs.map(doc => ({
         id: doc.id,
+        pinNumber: enteredPin, // PIN 번호 추가
         ...doc.data()
       }));
 
@@ -112,17 +117,19 @@ export default function AttendanceScreen({ navigation }) {
     }
   };
 
-  // 2. 출석 처리
+  // 출석 처리 (Firestore에만 기록)
   const processAttendance = async (studentData, enteredPin) => {
     try {
       const total = studentData.totalCount || 0;     
       const current = studentData.currentCount || 0; 
       
+      // 횟수 소진 체크
       if (current >= total) {
         showResult("⚠️ 횟수 소진", `${studentData.name}님 수강 횟수가 끝났습니다.`, "error");
         return;
       }
 
+      // 1. Firestore에 출석 기록 추가 (출결 기록의 핵심)
       await addDoc(collection(db, "attendance"), {
         studentId: studentData.id,
         name: studentData.name,
@@ -132,9 +139,13 @@ export default function AttendanceScreen({ navigation }) {
         type: "출석"
       });
 
+      // 2. Firestore 잔여 횟수 업데이트
       const studentRef = doc(db, "students", studentData.id);
       await updateDoc(studentRef, { currentCount: increment(1) });
+      
+      // GAS 연동 로직이 모두 삭제되었습니다.
 
+      // 3. 성공 팝업 표시
       showResult(
         "✅ 출석 완료", 
         `${studentData.name} (${studentData.subject})\n남은 횟수: ${total - (current + 1)}회`,
@@ -216,7 +227,8 @@ export default function AttendanceScreen({ navigation }) {
                     style={styles.siblingItem}
                     onPress={() => {
                       setSiblingModalVisible(false);
-                      processAttendance(student, pin);
+                      // PIN 번호를 studentData에 임시 추가하여 processAttendance로 전달
+                      processAttendance({...student, pinNumber: pin}, pin);
                     }}
                   >
                     <Text style={styles.siblingName}>{student.name}</Text>
@@ -231,7 +243,7 @@ export default function AttendanceScreen({ navigation }) {
           </View>
         </Modal>
 
-        {/* 결과 확인 팝업 (수정됨: 버튼 삭제, 카운트다운 추가) */}
+        {/* 결과 확인 팝업 */}
         <Modal
           animationType="fade"
           transparent={true}
@@ -249,7 +261,6 @@ export default function AttendanceScreen({ navigation }) {
               <Text style={styles.resultTitle}>{resultConfig.title}</Text>
               <Text style={styles.resultMessage}>{resultConfig.message}</Text>
               
-              {/* 버튼 대신 카운트다운 텍스트 표시 */}
               <Text style={styles.countdownText}>
                 {countdown}초 후 자동으로 닫힙니다
               </Text>
@@ -290,7 +301,6 @@ const styles = StyleSheet.create({
   keyText: { color: 'white', fontSize: 36, fontWeight: '500' },
   controlKeyText: { fontSize: 36, fontWeight: 'bold' },
 
-  // 모달 스타일
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '80%', maxWidth: 400, backgroundColor: '#fff', borderRadius: 15, padding: 25, elevation: 5, alignItems: 'center' },
   
@@ -305,10 +315,8 @@ const styles = StyleSheet.create({
   resultTitle: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 10 },
   resultMessage: { fontSize: 16, color: '#555', textAlign: 'center', marginBottom: 25, lineHeight: 24 },
   
-  // 카운트다운 텍스트 스타일
   countdownText: { fontSize: 14, color: '#888', marginTop: 10 },
   
-  // 기존 버튼 스타일 (더 이상 사용하지 않지만 혹시 몰라 남겨두거나 삭제하셔도 됩니다)
   resultConfirmBtn: { backgroundColor: '#4285F4', paddingVertical: 12, paddingHorizontal: 40, borderRadius: 8 },
   resultConfirmText: { color: 'white', fontSize: 18, fontWeight: 'bold' }
 });
