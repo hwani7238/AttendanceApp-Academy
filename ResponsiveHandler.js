@@ -7,7 +7,7 @@ const ResponsiveContext = createContext();
 // 2. 모드 판독기 (Provider)
 export const ResponsiveProvider = ({ children }) => {
   const { width } = useWindowDimensions();
-  
+
   const MOBILE_BREAKPOINT = 768; // 태블릿/모바일 기준을 조금 넉넉하게 768px로 조정
   const isWeb = Platform.OS === 'web';
   const isMobileSize = width < MOBILE_BREAKPOINT;
@@ -31,17 +31,17 @@ export const useResponsive = () => useContext(ResponsiveContext);
 export const ResponsiveLayout = ({ children, style }) => {
   // Provider에서 값을 가져옴
   const context = useResponsive();
-  
+
   // context가 없을 경우(App.js에서 Provider로 안 감싼 경우) 대비 안전장치
-  const isMobile = context ? context.isStudentMode : true; 
+  const isMobile = context ? context.isStudentMode : true;
 
   return (
     <View style={[styles.background, style]}>
       <View style={styles.webContainer}>
         {/* 👇 여기가 수정되었습니다! */}
         {/* 자식이 '함수'라면 실행해서 isMobile 값을 넘겨주고, 아니면 그냥 보여줍니다. */}
-        {typeof children === 'function' 
-          ? children({ isMobile }) 
+        {typeof children === 'function'
+          ? children({ isMobile })
           : children
         }
       </View>
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   },
   webContainer: {
     width: '100%',
-    maxWidth: 800,         // ⭕ 수정: 테이블 등을 위해 폭을 500 -> 800으로 넓힘
+    maxWidth: 1400,         // ⭕ 수정: 테이블 등을 위해 폭을 500 -> 800 -> 1400으로 넓힘
     flex: 1,
     backgroundColor: '#fff',
     shadowColor: "#000",   // (선택) PC 웹에서 카드처럼 보이게 그림자 추가

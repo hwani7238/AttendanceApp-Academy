@@ -1,71 +1,129 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, useColorScheme } from 'react-native';
 import { auth } from './firebaseConfig';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
 // 👇 반응형 핸들러(ResponsiveHandler)에서 레이아웃 가져오기
 import { ResponsiveLayout } from './ResponsiveHandler';
+import { theme } from './Theme';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // 테마 (현재는 Light Mode로 고정됨)
+  // 만약 Dark Mode를 다시 원하시면 Theme.js에서 Default를 변경하면 됩니다.
+  const systemColorScheme = useColorScheme();
+  // const colors = theme[systemColorScheme === 'dark' ? 'dark' : 'light'];
+  const colors = theme.light; // Force Light Mode based on user feedback
 
   // 1. 이미 로그인된 상태라면 자동으로 메인 화면으로 이동
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        navigation.replace("Main"); 
+        navigation.replace("Main");
       }
     });
     return unsubscribe;
   }, []);
 
+  const getFriendlyErrorMessage = (errorCode) => {
+    switch (errorCode) {
+      case 'auth/invalid-credential':
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+        return '이메일 또는 비밀번호가 일치하지 않습니다.';
+      case 'auth/email-already-in-use':
+        return '이미 사용 중인 이메일입니다.';
+      case 'auth/invalid-email':
+        return '유효하지 않은 이메일 형식입니다.';
+      case 'auth/weak-password':
+        return '비밀번호는 6자리 이상이어야 합니다.';
+      case 'auth/network-request-failed':
+        return '네트워크 연결 상태를 확인해주세요.';
+      case 'auth/too-many-requests':
+        return '너무 많은 시도가 있었습니다. 잠시 후 다시 시도해주세요.';
+      default:
+        return '오류가 발생했습니다. 다시 시도해주세요. (' + errorCode + ')';
+    }
+  };
+
   const handleLogin = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
-      Alert.alert("로그인 실패", "이메일 또는 비밀번호를 확인해주세요.");
+      console.error("Login Error:", error.code, error.message);
+      const friendlyMsg = getFriendlyErrorMessage(error.code);
+      setErrorMessage(friendlyMsg);
+      Alert.alert("로그인 실패", friendlyMsg);
     }
   };
 
-  const handleSignUp = async () => {
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      Alert.alert("회원가입 성공", "로그인되었습니다.");
-    } catch (error) {
-      Alert.alert("회원가입 실패", error.message);
-    }
-  };
+  // handleSignUp Removed (Moved to SignUpScreen)
 
   return (
-    // 👇 View 대신 ResponsiveLayout 사용! (PC/모바일 자동 대응)
     <ResponsiveLayout>
-      <View style={styles.contentContainer}>
-        <Text style={styles.header}>학원 출결 관리 🏫</Text>
-        
-        <TextInput
-          style={styles.input}
-          placeholder="이메일"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="비밀번호"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.header, { color: colors.foreground }]}>학원 출결 관리 🏫</Text>
+          <Text style={[styles.subHeader, { color: colors.mutedForeground }]}>
+            강사와 학생을 위한 스마트한 관리
+          </Text>
 
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>로그인</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={[styles.button, styles.signupButton]} onPress={handleSignUp}>
-            <Text style={styles.buttonText}>회원가입</Text>
-          </TouchableOpacity>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={[styles.input, {
+                backgroundColor: colors.inputBackground,
+                color: colors.foreground,
+                borderColor: colors.input
+              }]}
+              placeholder="이메일"
+              placeholderTextColor={colors.mutedForeground}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+            />
+            <TextInput
+              style={[styles.input, {
+                backgroundColor: colors.inputBackground,
+                color: colors.foreground,
+                borderColor: colors.input
+              }]}
+              placeholder="비밀번호"
+              placeholderTextColor={colors.mutedForeground}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoComplete="password"
+            />
+          </View>
+
+          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+          <View style={styles.buttonContainer}>
+            {/* Login Button using Chart 3 (Blue) for vibrancy */}
+            <TouchableOpacity
+              style={[
+                styles.button,
+                { backgroundColor: colors.chart3, shadowColor: colors.chart3 }
+              ]}
+              onPress={handleLogin}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.buttonText, { color: '#ffffff' }]}>로그인</Text>
+            </TouchableOpacity>
+
+            {/* Signup Button using Chart 2 (Teal) or Secondary */}
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: colors.secondary, marginTop: 8 }]}
+              onPress={() => navigation.navigate("SignUp")}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.buttonText, { color: colors.secondaryForeground }]}>회원가입</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </ResponsiveLayout>
@@ -73,52 +131,76 @@ export default function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // ResponsiveLayout이 바깥쪽 여백과 중앙 정렬을 담당하므로
-  // 여기서는 내부 요소들의 스타일만 지정하면 됩니다.
-  contentContainer: {
+  container: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
     padding: 20,
-    width: '100%', // 가로 꽉 차게
+  },
+  card: {
+    width: '100%',
+    maxWidth: 400,
+    padding: 32,
+    borderRadius: 24,
+    borderWidth: 1,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
   },
   header: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  subHeader: {
+    fontSize: 16,
     marginBottom: 40,
-    color: '#333',
-    textAlign: 'center'
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  inputContainer: {
+    gap: 16,
+    marginBottom: 24,
   },
   input: {
     width: '100%',
-    height: 50,
-    borderColor: '#ddd',
+    height: 52,
     borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    backgroundColor: '#f9f9f9',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
   },
   buttonContainer: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-    gap: 10, // 버튼 사이 간격
+    gap: 0,
+    marginTop: 8,
   },
   button: {
-    flex: 1, // 버튼 크기 동일하게
-    height: 50,
-    backgroundColor: '#4285F4',
-    borderRadius: 8,
+    width: '100%',
+    height: 52,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  signupButton: {
-    backgroundColor: '#aaa', // 회원가입 버튼은 회색으로 구분
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, // Colored shadow support (iOS)
+    shadowRadius: 8,
+    elevation: 4,
   },
   buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+    fontWeight: '700',
     fontSize: 16,
+  },
+  errorText: {
+    color: '#d4183d',
+    marginBottom: 16,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '500',
   }
 });

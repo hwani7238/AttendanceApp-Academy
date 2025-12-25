@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, FlatList, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
-import { db } from './firebaseConfig';
-import { collection, onSnapshot, query, doc, updateDoc, deleteDoc, where, getDocs, orderBy } from 'firebase/firestore'; 
-import { ResponsiveLayout } from './ResponsiveHandler'; 
+import { db, auth } from './firebaseConfig';
+import { collection, onSnapshot, query, doc, updateDoc, deleteDoc, where, getDocs, orderBy } from 'firebase/firestore';
+import { ResponsiveLayout } from './ResponsiveHandler';
+import { theme } from './Theme';
+// import { Ionicons } from '@expo/vector-icons'; // Removed for stability
 
-// --- 로컬 시간 기준 날짜 변환 함수 ---
 const formatLocalDate = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -12,10 +13,8 @@ const formatLocalDate = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-// --- 미니 캘린더 컴포넌트 ---
-const MiniCalendar = ({ selectedDate, onSelectDate, onReset }) => {
-  const [currentDate, setCurrentDate] = useState(new Date()); 
-
+const MiniCalendar = ({ selectedDate, onSelectDate, onReset, colors }) => {
+  const [currentDate, setCurrentDate] = useState(new Date());
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -26,8 +25,8 @@ const MiniCalendar = ({ selectedDate, onSelectDate, onReset }) => {
     const days = [];
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    const startDayOfWeek = firstDay.getDay(); 
-    
+    const startDayOfWeek = firstDay.getDay();
+
     for (let i = 0; i < startDayOfWeek; i++) {
       days.push(null);
     }
@@ -44,81 +43,208 @@ const MiniCalendar = ({ selectedDate, onSelectDate, onReset }) => {
     <View style={styles.calendarContainer}>
       <View style={styles.calHeader}>
         <TouchableOpacity onPress={handlePrevMonth} style={styles.iconBtn}>
-          <Text style={styles.arrowIcon}>◀</Text>
+          <Text style={{ fontSize: 20, color: colors.mutedForeground }}>◀️</Text>
         </TouchableOpacity>
-        <Text style={styles.calTitle}>{year}년 {month + 1}월</Text>
+        <Text style={[styles.calTitle, { color: colors.foreground }]}>{year}년 {month + 1}월</Text>
         <TouchableOpacity onPress={handleNextMonth} style={styles.iconBtn}>
-          <Text style={styles.arrowIcon}>▶</Text>
+          <Text style={{ fontSize: 20, color: colors.mutedForeground }}>▶️</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.weekRow}>
-        {['일','월','화','수','목','금','토'].map((d, i) => (
-          <Text key={i} style={[styles.weekText, i===0 && {color:'#ff5c5c'}]}>{d}</Text>
+        {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
+          <Text key={i} style={[styles.weekText, { color: i === 0 ? colors.destructive : colors.mutedForeground }]}>{d}</Text>
         ))}
       </View>
 
       <View style={styles.daysGrid}>
         {calendarDays.map((date, index) => {
           if (!date) return <View key={index} style={styles.dayCell} />;
-          
-          const dateStr = formatLocalDate(date); 
+
+          const dateStr = formatLocalDate(date);
           const selected = isSelected(date);
 
           return (
-            <TouchableOpacity 
-              key={index} 
-              style={[styles.dayCell, selected && styles.selectedDay]} 
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.dayCell,
+                selected && { backgroundColor: colors.chart3, borderRadius: 12 } // Selected: Vibrant Blue
+              ]}
               onPress={() => onSelectDate(dateStr)}
             >
-              <Text style={[styles.dayText, selected && {color:'white'}]}>{date.getDate()}</Text>
+              <Text style={[
+                styles.dayText,
+                { color: colors.foreground },
+                selected && { color: '#fff', fontWeight: 'bold' }
+              ]}>{date.getDate()}</Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
-      <TouchableOpacity style={styles.resetButton} onPress={onReset}>
-        {/* 아이콘을 🔔(알림)으로 변경하여 주목도 상승 */}
-        <Text style={styles.resetIcon}>🔔</Text>
-        <Text style={styles.resetText}> 결제 필요 리스트</Text>
+      <TouchableOpacity
+        style={[styles.resetButton, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+        onPress={onReset}
+      >
+        <Text style={{ fontSize: 16, marginRight: 6 }}>🔄</Text>
+        <Text style={[styles.resetText, { color: colors.primary }]}>전체 목록 보기</Text>
       </TouchableOpacity>
     </View>
   );
 };
 
-// --- 메인 화면 ---
 export default function StudentListScreen({ navigation }) {
-  const [viewMode, setViewMode] = useState('ALL'); 
+  const colors = theme.light;
+  const [viewMode, setViewMode] = useState('ALL');
   const [selectedDate, setSelectedDate] = useState(null);
-  const [students, setStudents] = useState([]); 
-  const [dailyAttendees, setDailyAttendees] = useState([]); 
+  const [students, setStudents] = useState([]);
+  const [dailyAttendees, setDailyAttendees] = useState([]);
 
-  // 모달 상태들
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [editName, setEditName] = useState("");
   const [editSubject, setEditSubject] = useState("");
   const [editTotal, setEditTotal] = useState("");
   const [editCurrent, setEditCurrent] = useState("");
-  const [editPin, setEditPin] = useState(""); 
+  const [editPin, setEditPin] = useState("");
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState("");
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [actionType, setActionType] = useState(null);
+  const [lastRefreshed, setLastRefreshed] = useState(new Date().toLocaleTimeString());
+
+  const [subjectModalVisible, setSubjectModalVisible] = useState(false);
+  const [subjectList, setSubjectList] = useState([]);
 
   useEffect(() => {
-    const q = query(collection(db, "students"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    if (editModalVisible && auth.currentUser) {
+      const { doc, getDoc } = require('firebase/firestore');
+      getDoc(doc(db, "users", auth.currentUser.uid)).then(snap => {
+        if (snap.exists() && snap.data().subjects) {
+          const raw = snap.data().subjects;
+          // Handle both string and object {name, fee}
+          const processed = raw.map(s => (typeof s === 'object' && s !== null) ? s.name : s);
+          setSubjectList(processed);
+        } else {
+          setSubjectList([]);
+        }
+      });
+    }
+  }, [editModalVisible]);
+
+  const fetchStudents = async () => {
+    if (!auth.currentUser) return;
+    try {
+      const q = query(collection(db, "students"), where("userId", "==", auth.currentUser.uid));
+      const snapshot = await getDocs(q);
       const list = snapshot.docs.map(doc => {
         const data = doc.data();
-        const remaining = (data.totalCount || 0) - (data.currentCount || 0);
-        return { id: doc.id, ...data, remaining, isPaymentNeeded: remaining <= 2 };
+        let isPaymentNeeded = false;
+        let remainingText = '';
+
+        if (data.usageType === 'monthly') {
+          const lastDate = data.lastPaymentDate ? data.lastPaymentDate.toDate() : new Date(data.regDate);
+          const nextDate = new Date(lastDate);
+          nextDate.setMonth(nextDate.getMonth() + 1);
+          const today = new Date();
+          const diffTime = nextDate - today;
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays <= 1) {
+            isPaymentNeeded = true;
+            remainingText = diffDays < 0 ? `연체됨 (${Math.abs(diffDays)}일)` : (diffDays === 0 ? '오늘 결제' : '내일 결제');
+          } else {
+            remainingText = `결제일: ${nextDate.getMonth() + 1}/${nextDate.getDate()}`;
+          }
+        } else {
+          const remaining = (data.totalCount || 0) - (data.currentCount || 0);
+          isPaymentNeeded = remaining <= 1;
+          remainingText = remaining <= 0 ? '소진됨' : `${remaining}회 남음`;
+        }
+        return { id: doc.id, ...data, isPaymentNeeded, remainingText };
       });
-      // [정렬 로직] 결제 필요한 학생(isPaymentNeeded)이 상단에 옴
-      list.sort((a, b) => (a.isPaymentNeeded === b.isPaymentNeeded ? a.name.localeCompare(b.name) : a.isPaymentNeeded ? -1 : 1));
+
+      list.sort((a, b) => {
+        if (a.isPaymentNeeded === b.isPaymentNeeded) {
+          return a.name.localeCompare(b.name);
+        }
+        return a.isPaymentNeeded ? -1 : 1;
+      });
       setStudents(list);
+      setLastRefreshed(new Date().toLocaleTimeString());
+    } catch (e) {
+      console.error(e);
+      Alert.alert("새로고침 실패", e.message);
+    }
+  };
+
+  useEffect(() => {
+    let unsubscribeStudents = () => { };
+
+    // Listen for Auth Changes to ensure we have a user before querying
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      unsubscribeStudents(); // Cleanup previous listener
+
+      if (!user) {
+        setStudents([]);
+        return;
+      }
+
+      const q = query(collection(db, "students"), where("userId", "==", user.uid));
+      unsubscribeStudents = onSnapshot(q, (snapshot) => {
+        const list = snapshot.docs.map(doc => {
+          const data = doc.data();
+          let isPaymentNeeded = false;
+          let remainingText = '';
+
+          if (data.usageType === 'monthly') {
+            // Monthly Logic
+            const lastDate = data.lastPaymentDate ? data.lastPaymentDate.toDate() : new Date(data.regDate);
+            const nextDate = new Date(lastDate);
+            nextDate.setMonth(nextDate.getMonth() + 1);
+
+            // Check if today is day before nextDate or passed
+            const today = new Date();
+            const diffTime = nextDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            // Alert if within 1 day (tomorrow is due) or overdue
+            if (diffDays <= 1) {
+              isPaymentNeeded = true;
+              remainingText = diffDays < 0 ? `연체됨 (${Math.abs(diffDays)}일)` : (diffDays === 0 ? '오늘 결제' : '내일 결제');
+            } else {
+              remainingText = `결제일: ${nextDate.getMonth() + 1}/${nextDate.getDate()}`;
+            }
+
+          } else {
+            // Session Logic (Default)
+            const remaining = (data.totalCount || 0) - (data.currentCount || 0);
+            isPaymentNeeded = remaining <= 1;
+            remainingText = remaining <= 0 ? '소진됨' : `${remaining}회 남음`;
+          }
+
+          return { id: doc.id, ...data, isPaymentNeeded, remainingText };
+        });
+
+        // Sort: Payment Needed first
+        list.sort((a, b) => {
+          if (a.isPaymentNeeded === b.isPaymentNeeded) {
+            return a.name.localeCompare(b.name);
+          }
+          return a.isPaymentNeeded ? -1 : 1;
+        });
+        setStudents(list);
+        setLastRefreshed(new Date().toLocaleTimeString());
+      }, (error) => {
+        console.error("Student Query Error:", error);
+        setLoading(false);
+      });
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeStudents();
+    };
   }, []);
 
   const fetchDailyAttendance = async (dateStr) => {
@@ -127,37 +253,42 @@ export default function StudentListScreen({ navigation }) {
     const start = new Date(dateStr + "T00:00:00");
     const end = new Date(dateStr + "T23:59:59");
 
+    if (!auth.currentUser) return;
+
     try {
+      // Removed orderBy("timestamp") to avoid index issues. Sorting client-side.
       const q = query(
         collection(db, "attendance"),
+        where("userId", "==", auth.currentUser.uid), // 🔥 Fix: Filter by User
         where("timestamp", ">=", start),
-        where("timestamp", "<=", end),
-        orderBy("timestamp", "desc")
+        where("timestamp", "<=", end)
       );
       const snapshot = await getDocs(q);
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      // Client-side sort (Newest first)
+      list.sort((a, b) => {
+        const tA = a.timestamp?.seconds || 0;
+        const tB = b.timestamp?.seconds || 0;
+        return tB - tA;
+      });
+
       setDailyAttendees(list);
     } catch (e) {
       console.error(e);
-      Alert.alert("오류", "출석 데이터를 불러오지 못했습니다.");
+      Alert.alert("오류", "데이터 로드 실패: " + e.message);
     }
   };
 
-  const handleReset = () => {
-    setSelectedDate(null);
-    setViewMode('ALL');
-  };
+  const handleReset = () => { setSelectedDate(null); setViewMode('ALL'); };
 
-  // --- 액션 핸들러 ---
   const promptDelete = (student) => {
-    setSelectedStudent(student);
-    setActionType('DELETE');
-    setConfirmMessage(`'${student.name}' 학생 정보를\n삭제하시겠습니까?`);
+    setSelectedStudent(student); setActionType('DELETE');
+    setConfirmMessage(`'${student.name}' 학생 정보를 삭제하시겠습니까?`);
     setConfirmModalVisible(true);
   };
   const promptPayment = (student) => {
-    setSelectedStudent(student);
-    setActionType('PAYMENT');
+    setSelectedStudent(student); setActionType('PAYMENT');
     setConfirmMessage(`'${student.name}' 학생 결제 처리를 하시겠습니까?`);
     setConfirmModalVisible(true);
   };
@@ -171,136 +302,175 @@ export default function StudentListScreen({ navigation }) {
     } catch (err) { alert("작업 실패"); }
   };
   const openEditModal = (s) => {
-    setEditingStudent(s); setEditName(s.name); setEditSubject(s.subject||''); 
-    setEditTotal(String(s.totalCount||0)); setEditCurrent(String(s.currentCount||0)); setEditPin(s.pinNumber||'');
+    setEditingStudent(s); setEditName(s.name); setEditSubject(s.subject || '');
+    setEditTotal(String(s.totalCount || 0)); setEditCurrent(String(s.currentCount || 0)); setEditPin(s.pinNumber || '');
     setEditModalVisible(true);
   };
   const handleUpdate = async () => {
-    if(!editingStudent) return;
+    if (!editingStudent) return;
     try {
-      await updateDoc(doc(db,"students",editingStudent.id), {
-        name:editName, subject:editSubject, totalCount:parseInt(editTotal)||0, currentCount:parseInt(editCurrent)||0, pinNumber:editPin
+      await updateDoc(doc(db, "students", editingStudent.id), {
+        name: editName,
+        subject: editSubject,
+        totalCount: parseInt(editTotal) || 0,
+        currentCount: parseInt(editCurrent) || 0,
+        pinNumber: editPin,
+        // Preserve existing fields like usageType
       });
       setEditModalVisible(false);
-    } catch(e) { alert("수정 실패"); }
+    } catch (e) { alert("수정 실패"); }
   };
 
   const renderStudentItem = ({ item }) => (
-    <View style={[styles.card, item.isPaymentNeeded && styles.warningCard]}>
+    <View style={[
+      styles.card,
+      { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 },
+      // Red Point: Strong Red Border for warning
+      item.isPaymentNeeded && { borderColor: colors.destructive, borderWidth: 2 }
+    ]}>
       <View style={styles.infoContainer}>
         <View style={styles.nameRow}>
-          <Text style={styles.name}>{item.name}</Text>
+          <Text style={[styles.name, { color: colors.foreground }]}>{item.name}</Text>
           {item.isPaymentNeeded && (
-            <View style={[styles.badge, item.remaining <= 0 ? styles.bgRed : styles.bgYellow]}>
-              <Text style={[styles.badgeText, item.remaining <= 0 ? {color:'white'} : {color:'#333'}]}>
-                {item.remaining <= 0 ? '소진됨' : '임박'}
+            <View style={[
+              styles.badge,
+              // Red Point: Strong Red Badge
+              { backgroundColor: colors.destructive }
+            ]}>
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>
+                {item.remainingText}
               </Text>
             </View>
           )}
         </View>
-        <Text style={[styles.subText, item.isPaymentNeeded && styles.redText]}>
-          {item.subject} • 잔여 {item.remaining}회 (총 {item.totalCount}회)
+        <Text style={[styles.subText, { color: colors.mutedForeground }]}>
+          {item.subject} • {item.usageType === 'monthly' ? '월결제' : `잔여: ${(item.totalCount || 0) - (item.currentCount || 0)} (현재 ${item.currentCount} / 총 ${item.totalCount})`}
         </Text>
         <View style={styles.actionButtons}>
           {item.isPaymentNeeded && (
-            <TouchableOpacity style={styles.paymentButton} onPress={() => promptPayment(item)}>
-              <Text style={styles.btnIcon}>💳</Text>
-              <Text style={styles.btnTextWhite}> 결제</Text>
+            <TouchableOpacity
+              style={[styles.btn, { backgroundColor: colors.destructive }]}
+              onPress={() => promptPayment(item)}
+            >
+              <Text style={{ fontSize: 12, marginRight: 4 }}>💳</Text>
+              <Text style={styles.btnTextWhite}>결제</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.editButton} onPress={() => openEditModal(item)}>
-            <Text style={styles.btnTextGray}>수정</Text>
+          <TouchableOpacity
+            style={[styles.btn, { backgroundColor: colors.secondary }]}
+            onPress={() => openEditModal(item)}
+          >
+            <Text style={{ color: colors.secondaryForeground, fontSize: 12, fontWeight: '600' }}>수정</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteButton} onPress={() => promptDelete(item)}>
-            <Text style={styles.btnTextRed}>삭제</Text>
+          <TouchableOpacity
+            style={[styles.btn, { backgroundColor: '#fee2e2' }]} // Soft Red background for delete btn
+            onPress={() => promptDelete(item)}
+          >
+            <Text style={{ color: colors.destructive, fontSize: 12, fontWeight: '600' }}>삭제</Text>
           </TouchableOpacity>
         </View>
       </View>
       <View style={styles.rightInfo}>
-        <Text style={styles.pinText}>No.{item.pinNumber}</Text>
-        {item.lastPaymentDate && <Text style={styles.dateText}>{new Date(item.lastPaymentDate.seconds * 1000).toLocaleDateString()}</Text>}
+        <Text style={[styles.pinText, { color: colors.primary }]}>No.{item.pinNumber}</Text>
+        {item.lastPaymentDate && <Text style={[styles.dateText, { color: colors.mutedForeground }]}>{new Date(item.lastPaymentDate.seconds * 1000).toLocaleDateString()}</Text>}
       </View>
     </View>
   );
 
-  const renderDailyItem = ({ item }) => (
-    <View style={styles.dailyCard}>
-      <View style={{flexDirection:'row', alignItems:'center'}}>
-        <Text style={{fontSize: 20, marginRight: 10}}>✅</Text>
-        <View>
-          <Text style={styles.dailyName}>{item.name}</Text>
-          <Text style={styles.dailyTime}>{new Date(item.timestamp.seconds * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</Text>
-        </View>
-      </View>
-      <Text style={styles.dailySubject}>{item.subject}</Text>
-    </View>
-  );
-
-  return (
+  return ( // ... Same layout ...
     <ResponsiveLayout>
       {({ isMobile }) => (
-        <View style={styles.container}>
-          
-          <View style={styles.header}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+
+          <View style={[styles.header, { backgroundColor: colors.background, borderColor: colors.border }]}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerLeft}>
-              <Text style={{fontSize: 24, color: '#333'}}>◀</Text>
-              <Text style={styles.backText}>뒤로</Text>
+              <Text style={{ fontSize: 24, color: colors.foreground }}>⬅️</Text>
             </TouchableOpacity>
-            <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>
-                {viewMode === 'ALL' ? `학생 관리 (${students.length}명)` : `${selectedDate} 출석자`}
-              </Text>
-            </View>
-            <View style={styles.headerRight}>
-              <TouchableOpacity onPress={() => navigation.navigate("StudentManagement")} style={styles.newAddButton}>
-                <Text style={styles.newAddButtonText}>+ 신규등록</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+              {viewMode === 'ALL' ? `학생 관리 (${students.length})` : `${selectedDate} 출석자`}
+            </Text>
+            <TouchableOpacity onPress={fetchStudents} style={{ marginRight: 10, padding: 5 }}>
+              <Text style={{ fontSize: 20 }}>🔄</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("StudentManagement")}
+              style={[styles.newAddButton, { backgroundColor: colors.chart3 }]}
+            >
+              <Text style={styles.newAddButtonText}>+ 신규</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={[styles.contentBody, isMobile && styles.columnLayout]}>
-            <View style={[styles.leftPanel, isMobile && styles.mobileTopPanel]}>
-              <MiniCalendar 
-                selectedDate={selectedDate} 
-                onSelectDate={fetchDailyAttendance} 
-                onReset={handleReset} 
+            <View style={[
+              styles.leftPanel,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              isMobile && styles.mobileTopPanel
+            ]}>
+              <MiniCalendar
+                selectedDate={selectedDate}
+                onSelectDate={fetchDailyAttendance}
+                onReset={handleReset}
+                colors={colors}
               />
             </View>
-            <View style={styles.rightPanel}>
+            <View style={[styles.rightPanel, { backgroundColor: colors.background }]}>
               {viewMode === 'ALL' ? (
                 <FlatList
                   data={students}
                   renderItem={renderStudentItem}
                   keyExtractor={item => item.id}
                   contentContainerStyle={styles.listContainer}
-                  ListEmptyComponent={<View style={styles.emptyBox}><Text>등록된 학생이 없습니다.</Text></View>}
+                  ListEmptyComponent={<View style={styles.emptyBox}><Text style={{ color: colors.mutedForeground }}>등록된 학생이 없습니다.</Text></View>}
                 />
-              ) : (
-                <View style={{flex:1}}>
-                  <View style={styles.dailyHeaderBar}>
-                    <Text style={styles.dailyHeaderTitle}>📅 {selectedDate} 출석 명단 ({dailyAttendees.length}명)</Text>
+              ) : ( // Daily View
+                <View style={{ flex: 1 }}>
+                  <View style={[styles.dailyHeaderBar, { backgroundColor: colors.muted }]}>
+                    <Text style={[styles.dailyHeaderTitle, { color: colors.foreground }]}>📅 {selectedDate} 명단</Text>
                   </View>
                   <FlatList
                     data={dailyAttendees}
-                    renderItem={renderDailyItem}
+                    renderItem={({ item }) => ( // Inline render for daily to save space
+                      <View style={[styles.dailyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 24, marginRight: 10 }}>✅</Text>
+                          <View>
+                            <Text style={[styles.dailyName, { color: colors.foreground }]}>{item.name}</Text>
+                            <Text style={[styles.dailyTime, { color: colors.mutedForeground }]}>
+                              {(() => {
+                                const t = item.timestamp;
+                                const d = t && typeof t.toDate === 'function' ? t.toDate() : new Date(t.seconds ? t.seconds * 1000 : t);
+                                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                              })()}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.dailySubject, { color: colors.chart3 }]}>{item.subject}</Text>
+                      </View>
+                    )}
                     keyExtractor={item => item.id}
                     contentContainerStyle={styles.listContainer}
-                    ListEmptyComponent={<View style={styles.emptyBox}><Text>해당 날짜의 출석 기록이 없습니다.</Text></View>}
                   />
                 </View>
               )}
             </View>
           </View>
 
-          {/* 모달 (기존 코드 유지) */}
+          {/* Reuse Modals... */}
           <Modal animationType="fade" transparent={true} visible={confirmModalVisible} onRequestClose={() => setConfirmModalVisible(false)}>
             <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>확인해주세요</Text>
-                <Text style={styles.confirmMessage}>{confirmMessage}</Text>
+              <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>확인</Text>
+                <Text style={[styles.confirmMessage, { color: colors.mutedForeground }]}>{confirmMessage}</Text>
                 <View style={styles.modalButtons}>
-                  <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setConfirmModalVisible(false)}><Text style={styles.modalBtnText}>취소</Text></TouchableOpacity>
-                  <TouchableOpacity style={[styles.modalBtn, actionType === 'DELETE' ? styles.deleteConfirmBtn : styles.paymentConfirmBtn]} onPress={handleConfirmAction}><Text style={[styles.modalBtnText, {color:'white'}]}>{actionType === 'DELETE' ? '삭제' : '확인'}</Text></TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.secondary }]} onPress={() => setConfirmModalVisible(false)}>
+                    <Text style={{ color: colors.secondaryForeground }}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: actionType === 'DELETE' ? colors.destructive : colors.chart2 }]}
+                    onPress={handleConfirmAction}
+                  >
+                    <Text style={{ color: '#fff' }}>{actionType === 'DELETE' ? '삭제' : '확인'}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -308,23 +478,77 @@ export default function StudentListScreen({ navigation }) {
 
           <Modal animationType="slide" transparent={true} visible={editModalVisible} onRequestClose={() => setEditModalVisible(false)}>
             <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>정보 수정</Text>
-                <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholder="이름" />
-                <TextInput style={styles.input} value={editSubject} onChangeText={setEditSubject} placeholder="과목" />
-                <TextInput style={styles.input} value={editPin} onChangeText={setEditPin} keyboardType="numeric" maxLength={4} placeholder="출석번호"/>
-                <View style={styles.row}>
-                  <TextInput style={[styles.input, {flex:1, marginRight:5}]} value={editTotal} onChangeText={setEditTotal} keyboardType="numeric" placeholder="총 횟수"/>
-                  <TextInput style={[styles.input, {flex:1, marginLeft:5}]} value={editCurrent} onChangeText={setEditCurrent} keyboardType="numeric" placeholder="현재 횟수"/>
-                </View>
+              <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>정보 수정</Text>
+
+                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>이름</Text>
+                <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.input }]} value={editName} onChangeText={setEditName} placeholder="이름" />
+
+                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>수강 과목</Text>
+                {/* Subject Dropdown Trigger */}
+                <TouchableOpacity
+                  style={[styles.input, { justifyContent: 'center', backgroundColor: colors.inputBackground, borderColor: colors.input }]}
+                  onPress={() => setSubjectModalVisible(true)}
+                >
+                  <Text style={{ color: editSubject ? colors.foreground : colors.mutedForeground }}>{editSubject || "과목 선택"}</Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>출석번호 (4자리)</Text>
+                <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.input }]} value={editPin} onChangeText={setEditPin} keyboardType="numeric" maxLength={4} placeholder="출석번호" />
+
+                {/* Only show counts if NOT monthly */}
+                {editingStudent?.usageType !== 'monthly' && (
+                  <>
+                    <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>총 횟수 / 현재 횟수</Text>
+                    <View style={styles.row}>
+                      <TextInput style={[styles.input, { flex: 1, marginRight: 5, backgroundColor: colors.inputBackground, borderColor: colors.input }]} value={editTotal} onChangeText={setEditTotal} keyboardType="numeric" placeholder="총 횟수" />
+                      <TextInput style={[styles.input, { flex: 1, marginLeft: 5, backgroundColor: colors.inputBackground, borderColor: colors.input }]} value={editCurrent} onChangeText={setEditCurrent} keyboardType="numeric" placeholder="현재 횟수" />
+                    </View>
+                  </>
+                )}
+
                 <View style={styles.modalButtons}>
-                  <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setEditModalVisible(false)}><Text style={styles.modalBtnText}>취소</Text></TouchableOpacity>
-                  <TouchableOpacity style={[styles.modalBtn, styles.saveBtn]} onPress={handleUpdate}><Text style={[styles.modalBtnText, {color:'white'}]}>저장</Text></TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.secondary }]} onPress={() => setEditModalVisible(false)}>
+                    <Text style={{ color: colors.secondaryForeground }}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.chart3 }]} onPress={handleUpdate}>
+                    <Text style={{ color: '#fff' }}>저장</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
           </Modal>
 
+          {/* Subject Selection Modal */}
+          <Modal animationType="slide" transparent={true} visible={subjectModalVisible} onRequestClose={() => setSubjectModalVisible(false)}>
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: colors.card, maxHeight: 400 }]}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>과목 변경</Text>
+                <FlatList
+                  data={subjectList}
+                  keyExtractor={(item, index) => index.toString()}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={{ padding: 15, borderBottomWidth: 1, borderColor: colors.border }}
+                      onPress={() => {
+                        setEditSubject(item);
+                        setSubjectModalVisible(false);
+                      }}
+                    >
+                      <Text style={{ fontSize: 16, color: colors.foreground }}>{item}</Text>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={<Text style={{ padding: 20, textAlign: 'center', color: colors.mutedForeground }}>등록된 과목이 없습니다.</Text>}
+                />
+                <TouchableOpacity
+                  style={{ padding: 15, alignItems: 'center', marginTop: 10 }}
+                  onPress={() => setSubjectModalVisible(false)}
+                >
+                  <Text style={{ color: colors.destructive, fontWeight: 'bold' }}>닫기</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </View>
       )}
     </ResponsiveLayout>
@@ -332,85 +556,62 @@ export default function StudentListScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee', height: 70 },
-  headerLeft: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  backText: { marginLeft: 5, fontSize: 16, color: '#333' },
-  headerCenter: { flex: 2, alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  headerRight: { flex: 1, alignItems: 'flex-end' },
-  newAddButton: { backgroundColor: '#4285F4', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8, elevation: 3 },
+  container: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, height: 60, borderBottomWidth: 1, justifyContent: 'space-between' },
+  headerLeft: { padding: 5 },
+  headerTitle: { fontSize: 18, fontWeight: 'bold' },
+  newAddButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, elevation: 2 },
   newAddButtonText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
 
   contentBody: { flex: 1, flexDirection: 'row' },
   columnLayout: { flexDirection: 'column' },
-  leftPanel: { width: 320, backgroundColor: '#fff', borderRightWidth: 1, borderColor: '#eee', padding: 15 },
+  leftPanel: { width: 320, borderRightWidth: 1, padding: 20 },
   mobileTopPanel: { width: '100%', borderRightWidth: 0, borderBottomWidth: 1 },
-  rightPanel: { flex: 1, backgroundColor: '#f8f9fa' },
+  rightPanel: { flex: 1 },
 
   calendarContainer: { alignItems: 'center' },
-  calHeader: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 10, marginBottom: 15, alignItems: 'center' },
-  calTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  arrowIcon: { fontSize: 20, color: '#555', fontWeight: 'bold' }, 
-  iconBtn: { padding: 5 }, 
-
-  weekRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 5 },
-  weekText: { width: 35, textAlign: 'center', fontWeight: 'bold', color: '#666', fontSize: 12 },
+  calHeader: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 15, alignItems: 'center' },
+  calTitle: { fontSize: 16, fontWeight: 'bold' },
+  iconBtn: { padding: 5 },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 8 },
+  weekText: { width: 32, textAlign: 'center', fontWeight: 'bold', fontSize: 12 },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%' },
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
-  dayText: { fontSize: 14, color: '#333' },
-  selectedDay: { backgroundColor: '#4285F4', borderRadius: 20 },
-  
-  // 버튼 스타일 변경 (회색 -> 강조된 파란색 테두리 또는 진한 회색)
-  resetButton: { flexDirection: 'row', marginTop: 20, backgroundColor: '#343a40', padding: 12, borderRadius: 8, width: '100%', justifyContent: 'center', alignItems: 'center' },
-  resetIcon: { fontSize: 16, color: 'white', marginRight: 6 }, 
-  resetText: { color: 'white', fontWeight: 'bold', fontSize: 15 },
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  dayText: { fontSize: 14 },
+  resetButton: { flexDirection: 'row', marginTop: 20, padding: 10, borderRadius: 8, width: '100%', justifyContent: 'center', alignItems: 'center' },
+  resetText: { fontWeight: 'bold', fontSize: 14 },
 
   listContainer: { padding: 15 },
   emptyBox: { alignItems: 'center', marginTop: 50 },
-  
-  card: { backgroundColor: '#fff', padding: 15, marginBottom: 12, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2, borderLeftWidth: 5, borderLeftColor: '#4CAF50' },
-  warningCard: { borderLeftColor: '#ffc107', backgroundColor: '#fffdf5' },
+
+  card: { padding: 16, marginBottom: 12, borderRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', borderWidth: 1, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
   infoContainer: { flex: 1, marginRight: 10 },
   nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  name: { fontSize: 18, fontWeight: 'bold', color: '#333', marginRight: 8 },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
-  bgRed: { backgroundColor: '#ffe6e6', borderWidth: 1, borderColor: '#dc3545' },
-  bgYellow: { backgroundColor: '#fffbe6', borderWidth: 1, borderColor: '#ffc107' },
-  badgeText: { fontSize: 11, fontWeight: 'bold' },
-  subText: { fontSize: 14, color: '#666', marginBottom: 12 },
-  redText: { color: '#d32f2f', fontWeight: 'bold' },
+  name: { fontSize: 16, fontWeight: 'bold', marginRight: 8 },
+  badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  subText: { fontSize: 13, marginBottom: 12 },
   actionButtons: { flexDirection: 'row', gap: 8 },
-  paymentButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4CAF50', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 },
-  editButton: { backgroundColor: '#f1f3f5', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
-  deleteButton: { backgroundColor: '#ffe6e6', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 },
-  
-  btnIcon: { fontSize: 12, color: 'white', marginRight: 4 }, 
+  btn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8 },
   btnTextWhite: { color: 'white', fontSize: 12, fontWeight: 'bold' },
-  btnTextGray: { color: '#495057', fontSize: 12, fontWeight: 'bold' },
-  btnTextRed: { color: '#dc3545', fontSize: 12, fontWeight: 'bold' },
-  rightInfo: { alignItems: 'flex-end', justifyContent: 'space-between', height: '100%' },
-  pinText: { fontSize: 14, fontWeight: 'bold', color: '#333' },
-  dateText: { fontSize: 12, color: '#999', marginTop: 5 },
 
-  dailyHeaderBar: { backgroundColor: '#e9ecef', padding: 10, borderRadius: 8, marginBottom: 10 },
-  dailyHeaderTitle: { fontWeight: 'bold', color: '#495057' },
-  dailyCard: { backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#eee' },
-  dailyName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  dailyTime: { fontSize: 12, color: '#888' },
-  dailySubject: { fontSize: 14, color: '#4285F4', fontWeight: '600' },
+  rightInfo: { alignItems: 'flex-end', justifyContent: 'space-between', height: '100%' },
+  pinText: { fontSize: 14, fontWeight: 'bold' },
+  dateText: { fontSize: 11, marginTop: 4 },
+
+  dailyHeaderBar: { padding: 10, borderRadius: 8, margin: 10 },
+  dailyHeaderTitle: { fontWeight: 'bold' },
+  dailyCard: { padding: 16, borderRadius: 12, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1 },
+  dailyName: { fontSize: 16, fontWeight: 'bold' },
+  dailyTime: { fontSize: 12 },
+  dailySubject: { fontSize: 14, fontWeight: '600' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '90%', maxWidth: 400, backgroundColor: '#fff', borderRadius: 16, padding: 24, elevation: 5 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  confirmMessage: { fontSize: 16, color: '#555', textAlign: 'center', marginBottom: 25 },
-  input: { borderWidth: 1, borderColor: '#dee2e6', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#f8f9fa', marginBottom: 10, width:'100%' },
+  modalContent: { width: '90%', maxWidth: 360, borderRadius: 20, padding: 24, elevation: 5 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  confirmMessage: { fontSize: 16, textAlign: 'center', marginBottom: 25 },
+  input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 12, width: '100%' },
   row: { flexDirection: 'row' },
   modalButtons: { flexDirection: 'row', marginTop: 10, gap: 10 },
-  modalBtn: { flex: 1, padding: 14, borderRadius: 8, alignItems: 'center' },
-  cancelBtn: { backgroundColor: '#f1f3f5' },
-  saveBtn: { backgroundColor: '#4285F4' },
-  deleteConfirmBtn: { backgroundColor: '#dc3545' },
-  paymentConfirmBtn: { backgroundColor: '#4CAF50' },
-  modalBtnText: { fontSize: 16, fontWeight: 'bold', color: '#495057' }
+  modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' },
+  inputLabel: { fontSize: 13, fontWeight: 'bold', marginBottom: 6, marginLeft: 4 }
 });
