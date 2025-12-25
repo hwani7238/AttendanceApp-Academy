@@ -194,6 +194,10 @@ export default function AttendanceHistoryScreen({ navigation }) {
       try {
         await updateDoc(doc(db, "attendance", record.id), { status: 'present' });
       } catch (e) { Alert.alert("오류", "수정 실패"); }
+    } else if (record.status === 'present') {
+      try {
+        await updateDoc(doc(db, "attendance", record.id), { status: 'makeup' });
+      } catch (e) { Alert.alert("오류", "수정 실패"); }
     } else {
       try {
         await deleteDoc(doc(db, "attendance", record.id));
@@ -380,6 +384,10 @@ export default function AttendanceHistoryScreen({ navigation }) {
                                       <View style={[styles.dot, { backgroundColor: colors.chart2 }]} /> // Teal Dot
                                     ) : status === 'absent' ? (
                                       <Text style={{ color: colors.destructive, fontWeight: 'bold', fontSize: 14 }}>결</Text>
+                                    ) : status === 'makeup' ? (
+                                      <View style={[styles.dot, { backgroundColor: '#FFA500', justifyContent: 'center', alignItems: 'center', width: 24, height: 24, borderRadius: 12 }]}>
+                                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>보</Text>
+                                      </View>
                                     ) : null}
                                   </TouchableOpacity>
                                 );
