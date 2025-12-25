@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, FlatList, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
 import { db, auth } from './firebaseConfig';
-import { collection, onSnapshot, query, doc, updateDoc, deleteDoc, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, getDoc, updateDoc, deleteDoc, where, getDocs, orderBy } from 'firebase/firestore';
 import { ResponsiveLayout } from './ResponsiveHandler';
 import { theme } from './Theme';
 // import { Ionicons } from '@expo/vector-icons'; // Removed for stability
@@ -97,6 +97,26 @@ const MiniCalendar = ({ selectedDate, onSelectDate, onReset, colors }) => {
 export default function StudentListScreen({ navigation }) {
   const colors = theme.light;
   const [viewMode, setViewMode] = useState('ALL');
+  const [filterBranch, setFilterBranch] = useState('ALL');
+  const [branchList, setBranchList] = useState(['1관', '2관']); // Default
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      if (!auth.currentUser) return;
+      try {
+        const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          if (data.branches && data.branches.length > 0) {
+            setBranchList(data.branches);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchBranches();
+  }, []);
   const [selectedDate, setSelectedDate] = useState(null);
   const [students, setStudents] = useState([]);
   const [dailyAttendees, setDailyAttendees] = useState([]);
@@ -342,6 +362,12 @@ export default function StudentListScreen({ navigation }) {
               </Text>
             </View>
           )}
+          {/* Branch Badge */}
+          {item.branch && (
+            <View style={{ marginLeft: 8, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: colors.muted, borderRadius: 4 }}>
+              <Text style={{ fontSize: 11, color: colors.mutedForeground, fontWeight: 'bold' }}>{item.branch}</Text>
+            </View>
+          )}
         </View>
         <Text style={[styles.subText, { color: colors.mutedForeground }]}>
           {item.subject} • {item.usageType === 'monthly' ? '월결제' : `잔여: ${(item.totalCount || 0) - (item.currentCount || 0)} (현재 ${item.currentCount} / 총 ${item.totalCount})`}
@@ -386,9 +412,23 @@ export default function StudentListScreen({ navigation }) {
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerLeft}>
               <Text style={{ fontSize: 24, color: colors.foreground }}>⬅️</Text>
             </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-              {viewMode === 'ALL' ? `학생 관리 (${students.length})` : `${selectedDate} 출석자`}
-            </Text>
+
+            {/* Filter Tabs */}
+            <View style={styles.filterTabs}>
+              <TouchableOpacity onPress={() => setFilterBranch('ALL')} style={[styles.filterTab, filterBranch === 'ALL' && { backgroundColor: colors.chart3 }]}>
+                <Text style={[styles.filterText, filterBranch === 'ALL' && { color: '#fff', fontWeight: 'bold' }]}>전체</Text>
+              </TouchableOpacity>
+              {branchList.map((b, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => setFilterBranch(b)}
+                  style={[styles.filterTab, filterBranch === b && { backgroundColor: colors.chart3 }]}
+                >
+                  <Text style={[styles.filterText, filterBranch === b && { color: '#fff', fontWeight: 'bold' }]}>{b}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TouchableOpacity onPress={fetchStudents} style={{ marginRight: 10, padding: 5 }}>
               <Text style={{ fontSize: 20 }}>🔄</Text>
             </TouchableOpacity>
@@ -416,7 +456,12 @@ export default function StudentListScreen({ navigation }) {
             <View style={[styles.rightPanel, { backgroundColor: colors.background }]}>
               {viewMode === 'ALL' ? (
                 <FlatList
-                  data={students}
+                  data={students.filter(s => {
+                    if (filterBranch === 'ALL') return true;
+                    // Legacy Support: undefined/null branch treated as '2관'
+                    const studentBranch = s.branch || '2관';
+                    return studentBranch === filterBranch;
+                  })}
                   renderItem={renderStudentItem}
                   keyExtractor={item => item.id}
                   contentContainerStyle={styles.listContainer}
@@ -560,7 +605,16 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, height: 60, borderBottomWidth: 1, justifyContent: 'space-between' },
   headerLeft: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
-  newAddButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, elevation: 2 },
+  newAddButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
   newAddButtonText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
 
   contentBody: { flex: 1, flexDirection: 'row' },
@@ -584,7 +638,21 @@ const styles = StyleSheet.create({
   listContainer: { padding: 15 },
   emptyBox: { alignItems: 'center', marginTop: 50 },
 
-  card: { padding: 16, marginBottom: 12, borderRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', borderWidth: 1, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+  card: {
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    backgroundColor: '#fff',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   infoContainer: { flex: 1, marginRight: 10 },
   nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   name: { fontSize: 16, fontWeight: 'bold', marginRight: 8 },
@@ -604,6 +672,11 @@ const styles = StyleSheet.create({
   dailyName: { fontSize: 16, fontWeight: 'bold' },
   dailyTime: { fontSize: 12 },
   dailySubject: { fontSize: 14, fontWeight: '600' },
+
+
+  filterTabs: { flexDirection: 'row', backgroundColor: '#f0f0f0', borderRadius: 20, padding: 4, gap: 4 },
+  filterTab: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16 },
+  filterText: { fontSize: 13, fontWeight: '600', color: '#666' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '90%', maxWidth: 360, borderRadius: 20, padding: 24, elevation: 5 },

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
 import { db, auth } from './firebaseConfig';
-import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDoc, updateDoc, Timestamp, increment } from 'firebase/firestore';
 import { ResponsiveLayout, useResponsive } from './ResponsiveHandler';
 import { theme } from './Theme';
 // import { Ionicons } from '@expo/vector-icons'; // Removed for stability
@@ -14,7 +14,27 @@ const getDayOfWeek = (year, month, day) => new Date(year, month, day).getDay();
 export default function AttendanceHistoryScreen({ navigation }) {
   const colors = theme.light;
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [filterBranch, setFilterBranch] = useState('ALL');
+  const [branchList, setBranchList] = useState(['1관', '2관']); // Default
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      if (!auth.currentUser) return;
+      try {
+        const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          if (data.branches && data.branches.length > 0) {
+            setBranchList(data.branches);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchBranches();
+  }, []);
 
   // Ref for Auto-Scroll
   const scrollRef = React.useRef(null);
@@ -189,6 +209,10 @@ export default function AttendanceHistoryScreen({ navigation }) {
           timestamp: Timestamp.fromDate(targetDate),
           status: 'absent'
         });
+        // 🔥 Sync: Increment Student Count
+        await updateDoc(doc(db, "students", student.id), {
+          currentCount: increment(1)
+        });
       } catch (e) { Alert.alert("오류", "기록 실패"); }
     } else if (record.status === 'absent') {
       try {
@@ -201,6 +225,10 @@ export default function AttendanceHistoryScreen({ navigation }) {
     } else {
       try {
         await deleteDoc(doc(db, "attendance", record.id));
+        // 🔥 Sync: Decrement Student Count
+        await updateDoc(doc(db, "students", student.id), {
+          currentCount: increment(-1)
+        });
       } catch (e) { Alert.alert("오류", "삭제 실패"); }
     }
   };
@@ -244,10 +272,23 @@ export default function AttendanceHistoryScreen({ navigation }) {
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
               <Text style={{ fontSize: 24, color: colors.foreground }}>⬅️</Text>
             </TouchableOpacity>
-            <Text style={[styles.screenTitle, { color: colors.foreground }]}>
-              출석 기록 조회
-              {'\n'}<Text style={{ fontSize: 10, color: colors.mutedForeground, fontWeight: 'normal' }}>{auth.currentUser?.email}</Text>
-            </Text>
+
+            {/* Filter Tabs */}
+            <View style={styles.filterTabs}>
+              <TouchableOpacity onPress={() => setFilterBranch('ALL')} style={[styles.filterTab, filterBranch === 'ALL' && { backgroundColor: colors.chart3 }]}>
+                <Text style={[styles.filterText, filterBranch === 'ALL' && { color: '#fff', fontWeight: 'bold' }]}>전체</Text>
+              </TouchableOpacity>
+              {branchList.map((b, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => setFilterBranch(b)}
+                  style={[styles.filterTab, filterBranch === b && { backgroundColor: colors.chart3 }]}
+                >
+                  <Text style={[styles.filterText, filterBranch === b && { color: '#fff', fontWeight: 'bold' }]}>{b}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TouchableOpacity
               onPress={toggleSortMode}
               style={[styles.sortBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
@@ -273,6 +314,16 @@ export default function AttendanceHistoryScreen({ navigation }) {
               const isExpanded = expandedSubjects[subject];
 
               let studentList = [...groupedStudents[subject]];
+
+              // Filter by Branch
+              studentList = studentList.filter(s => {
+                if (filterBranch === 'ALL') return true;
+                const studentBranch = s.branch || '2관';
+                return studentBranch === filterBranch;
+              });
+
+              if (studentList.length === 0) return null; // Hide subject if no students match
+
               if (sortBy === 'name') {
                 studentList.sort((a, b) => a.name.localeCompare(b.name));
               } else {
@@ -309,7 +360,8 @@ export default function AttendanceHistoryScreen({ navigation }) {
                         </View>
                         {studentList.map((student) => {
                           const records = Object.values(attendanceMap[student.id] || {});
-                          const presentCount = records.filter(r => r.status === 'present').length;
+                          // Update: Count 'makeup' as present
+                          const presentCount = records.filter(r => r.status === 'present' || r.status === 'makeup').length;
                           const absentCount = records.filter(r => r.status === 'absent').length;
 
                           return (
@@ -324,7 +376,7 @@ export default function AttendanceHistoryScreen({ navigation }) {
                                 { color: colors.foreground },
                                 isBreakGroup && { textDecorationLine: 'line-through', color: colors.mutedForeground }
                               ]} numberOfLines={1}>
-                                {student.name}
+                                {student.name} <Text style={{ fontSize: 10, color: colors.mutedForeground, fontWeight: 'normal' }}>{student.branch ? `(${student.branch})` : ''}</Text>
                               </Text>
 
                               <View style={styles.countRow}>
@@ -456,4 +508,8 @@ const styles = StyleSheet.create({
   checkCell: { height: 50, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderBottomWidth: 1 },
 
   dot: { width: 14, height: 14, borderRadius: 7 },
+
+  filterTabs: { flexDirection: 'row', backgroundColor: '#f0f0f0', borderRadius: 20, padding: 4, gap: 4 },
+  filterTab: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16 },
+  filterText: { fontSize: 13, fontWeight: '600', color: '#666' },
 });

@@ -190,7 +190,7 @@ export default function MainScreen({ navigation }) {
                 <TouchableOpacity
                   style={[
                     styles.button,
-                    { backgroundColor: colors.chart3, shadowColor: colors.chart3 }
+                    { backgroundColor: colors.chart3 }
                   ]}
                   onPress={() => navigation.navigate("StudentList")}
                   activeOpacity={0.9}
@@ -203,7 +203,7 @@ export default function MainScreen({ navigation }) {
                 <TouchableOpacity
                   style={[
                     styles.button,
-                    { backgroundColor: colors.chart2, shadowColor: colors.chart2 }
+                    { backgroundColor: colors.chart2 }
                   ]}
                   onPress={() => navigation.navigate("AttendanceHistory")}
                   activeOpacity={0.9}
@@ -289,10 +289,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
-    elevation: 6
+    elevation: 8
   },
   emojiIcon: {
     fontSize: 28,

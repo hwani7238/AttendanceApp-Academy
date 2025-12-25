@@ -26,6 +26,7 @@
   },
   "private": true,
   "devDependencies": {
-    "babel-preset-expo": "^54.0.9"
+    "babel-preset-expo": "^54.0.9",
+    "firebase-tools": "^15.1.0"
   }
 }

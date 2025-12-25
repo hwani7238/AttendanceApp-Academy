@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert } from 'react-native';
-import { auth } from './firebaseConfig';
+// Import db is needed
+import { auth, db } from './firebaseConfig';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; // UpdateProfile import
+import { doc, setDoc } from 'firebase/firestore'; // Firestore imports
 import { ResponsiveLayout } from './ResponsiveHandler';
+// ... rest of imports
 import { theme } from './Theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -33,9 +36,16 @@ export default function SignUpScreen({ navigation }) {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            // 2. Update Profile with Company Name
+            // 2. Update Profile with Company Name (Auth Profile)
             await updateProfile(user, {
                 displayName: companyName
+            });
+
+            // 3. Save to Firestore (Critical for 'Find ID' feature)
+            await setDoc(doc(db, "users", user.uid), {
+                email: email,
+                academyName: companyName,
+                createdAt: new Date(),
             });
 
             Alert.alert("가입 성공", `${companyName}님 환영합니다!`, [
@@ -54,7 +64,7 @@ export default function SignUpScreen({ navigation }) {
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
 
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={24} color={colors.foreground} />
+                        <Text style={{ fontSize: 24, color: colors.foreground, fontWeight: 'bold' }}>{"<"}</Text>
                     </TouchableOpacity>
 
                     <Text style={[styles.header, { color: colors.foreground }]}>회원가입</Text>

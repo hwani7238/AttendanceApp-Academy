@@ -1,23 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, useColorScheme } from 'react-native';
-import { auth } from './firebaseConfig';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
-// 👇 반응형 핸들러(ResponsiveHandler)에서 레이아웃 가져오기
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, useColorScheme, Modal } from 'react-native';
+import { auth, db } from './firebaseConfig';
+import { signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged } from 'firebase/auth'; // Added sendPasswordResetEmail
+import { collection, query, where, getDocs } from 'firebase/firestore'; // Added Firestore query imports
+// ... rest of imports
 import { ResponsiveLayout } from './ResponsiveHandler';
 import { theme } from './Theme';
+
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // 테마 (현재는 Light Mode로 고정됨)
-  // 만약 Dark Mode를 다시 원하시면 Theme.js에서 Default를 변경하면 됩니다.
-  const systemColorScheme = useColorScheme();
-  // const colors = theme[systemColorScheme === 'dark' ? 'dark' : 'light'];
-  const colors = theme.light; // Force Light Mode based on user feedback
+  // Find ID/PW States
+  const [findModalVisible, setFindModalVisible] = useState(false);
+  const [findMode, setFindMode] = useState('id'); // 'id' or 'pw'
+  const [findInput, setFindInput] = useState('');
+  const [findResult, setFindResult] = useState('');
 
-  // 1. 이미 로그인된 상태라면 자동으로 메인 화면으로 이동
+  // ... (systemColorScheme, colors definition)
+  const systemColorScheme = useColorScheme();
+  const colors = theme.light;
+
+  // ... (useEffect for auth check)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -28,6 +34,7 @@ export default function LoginScreen({ navigation }) {
   }, []);
 
   const getFriendlyErrorMessage = (errorCode) => {
+    // ... (existing error messages)
     switch (errorCode) {
       case 'auth/invalid-credential':
       case 'auth/user-not-found':
@@ -59,11 +66,116 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
-  // handleSignUp Removed (Moved to SignUpScreen)
+  // Find Logic
+  const handleFind = async () => {
+    setFindResult('');
+    if (!findInput.trim()) {
+      setFindResult("내용을 입력해주세요.");
+      return;
+    }
+
+    if (findMode === 'id') {
+      // Find ID: Query users by academyName
+      try {
+        const q = query(collection(db, "users"), where("academyName", "==", findInput));
+        const querySnapshot = await getDocs(q);
+        if (querySnapshot.empty) {
+          setFindResult("해당 업체명으로 가입된 정보가 없습니다.");
+        } else {
+          // Assuming first match is correct or multiple matches handling?
+          // For simplicity, take the first one.
+          const userDoc = querySnapshot.docs[0].data();
+          const userEmail = userDoc.email;
+
+          // Masking email (e.g. wh***@gmail.com)
+          const [local, domain] = userEmail.split('@');
+          const maskedLocal = local.length > 2 ? local.substring(0, 2) + '*'.repeat(local.length - 2) : local + '***';
+          setFindResult(`찾은 아이디: ${maskedLocal}@${domain}`);
+        }
+      } catch (e) {
+        console.error(e);
+        setFindResult("오류가 발생했습니다.");
+      }
+    } else {
+      // Find PW: Reset Email
+      try {
+        await sendPasswordResetEmail(auth, findInput);
+        setFindResult("✅ 비밀번호 재설정 이메일을 보냈습니다.\n이메일을 확인해주세요.");
+      } catch (e) {
+        console.error(e);
+        if (e.code === 'auth/user-not-found') {
+          setFindResult("가입되지 않은 이메일입니다.");
+        } else if (e.code === 'auth/invalid-email') {
+          setFindResult("유효하지 않은 이메일 형식입니다.");
+        } else {
+          setFindResult("오류가 발생했습니다: " + e.message);
+        }
+      }
+    }
+  };
+
+  const openFindModal = (mode) => {
+    setFindMode(mode);
+    setFindInput('');
+    setFindResult('');
+    setFindModalVisible(true);
+  };
 
   return (
     <ResponsiveLayout>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* Modal for Find ID/PW */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={findModalVisible}
+          onRequestClose={() => setFindModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                {findMode === 'id' ? '아이디(이메일) 찾기' : '비밀번호 찾기'}
+              </Text>
+
+              <Text style={{ marginBottom: 8, color: colors.mutedForeground }}>
+                {findMode === 'id' ? '가입하신 업체명을 입력해주세요.' : '가입하신 이메일 주소를 입력해주세요.'}
+              </Text>
+
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.foreground, borderColor: colors.input }]}
+                placeholder={findMode === 'id' ? "예: 위 뮤직 아카데미" : "example@email.com"}
+                placeholderTextColor={colors.mutedForeground}
+                value={findInput}
+                onChangeText={setFindInput}
+                autoCapitalize={findMode === 'pw' ? 'none' : 'words'}
+              />
+
+              {findResult ? (
+                <View style={{ marginVertical: 10, padding: 10, backgroundColor: colors.secondary, borderRadius: 8 }}>
+                  <Text style={{ color: colors.secondaryForeground, textAlign: 'center' }}>{findResult}</Text>
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: colors.chart3, marginTop: 10 }]}
+                onPress={handleFind}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>
+                  {findMode === 'id' ? '아이디 찾기' : '이메일 발송'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ marginTop: 15, alignSelf: 'center' }}
+                onPress={() => setFindModalVisible(false)}
+              >
+                <Text style={{ color: colors.mutedForeground }}>닫기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.header, { color: colors.foreground }]}>학원 출결 관리 🏫</Text>
           <Text style={[styles.subHeader, { color: colors.mutedForeground }]}>
@@ -85,6 +197,7 @@ export default function LoginScreen({ navigation }) {
               autoCapitalize="none"
               autoComplete="email"
             />
+
             <TextInput
               style={[styles.input, {
                 backgroundColor: colors.inputBackground,
@@ -95,7 +208,7 @@ export default function LoginScreen({ navigation }) {
               placeholderTextColor={colors.mutedForeground}
               value={password}
               onChangeText={setPassword}
-              secureTextEntry
+              secureTextEntry={true}
               autoComplete="password"
             />
           </View>
@@ -107,7 +220,14 @@ export default function LoginScreen({ navigation }) {
             <TouchableOpacity
               style={[
                 styles.button,
-                { backgroundColor: colors.chart3, shadowColor: colors.chart3 }
+                {
+                  backgroundColor: colors.chart3,
+                  shadowColor: colors.chart3,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3, // Increased opacity for better visibility
+                  shadowRadius: 8,
+                  elevation: 6 // Increased elevation
+                }
               ]}
               onPress={handleLogin}
               activeOpacity={0.8}
@@ -115,9 +235,22 @@ export default function LoginScreen({ navigation }) {
               <Text style={[styles.buttonText, { color: '#ffffff' }]}>로그인</Text>
             </TouchableOpacity>
 
+            {/* Find ID / Find PW Buttons */}
+            <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16, gap: 16 }}>
+              <TouchableOpacity onPress={() => openFindModal('id')}>
+                <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>아이디 찾기</Text>
+              </TouchableOpacity>
+              <View style={{ width: 1, backgroundColor: colors.border }} />
+              <TouchableOpacity onPress={() => openFindModal('pw')}>
+                <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>비밀번호 찾기</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 16 }} />
+
             {/* Signup Button using Chart 2 (Teal) or Secondary */}
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: colors.secondary, marginTop: 8 }]}
+              style={[styles.button, { backgroundColor: colors.secondary, marginTop: 0 }]}
               onPress={() => navigation.navigate("SignUp")}
               activeOpacity={0.8}
             >
@@ -202,5 +335,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 14,
     fontWeight: '500',
-  }
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    width: '90%',
+    maxWidth: 400,
+    padding: 24,
+    borderRadius: 16,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
 });

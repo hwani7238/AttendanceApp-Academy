@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ScrollView, Modal, Platform } from 'react-native';
 import { db, auth } from './firebaseConfig';
-import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
-import { Ionicons } from '@expo/vector-icons';
+import { collection, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
+// import { Ionicons } from '@expo/vector-icons'; // Removed for stability
 import { ResponsiveLayout } from './ResponsiveHandler';
 import { theme } from './Theme';
 
@@ -12,11 +12,55 @@ export default function StudentManagementScreen({ navigation }) {
   const [contact, setContact] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [subject, setSubject] = useState('');
+  const [branch, setBranch] = useState('1관'); // Default to 1st branch
   const [tuitionFee, setTuitionFee] = useState(''); // New State for Fee
   const [usageType, setUsageType] = useState('session'); // 'session' (회차) or 'monthly' (월결제)
   const [count, setCount] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
+
   const [subjectList, setSubjectList] = useState([]); // Stores objects {name, fee} or strings
+  const [branchList, setBranchList] = useState([]);
+  const [newBranchInput, setNewBranchInput] = useState('');
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!auth.currentUser) return;
+      try {
+        const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setSubjectList(data.subjects || []);
+          setBranchList(data.branches || ['1관', '2관']);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  const handleQuickAddBranch = async () => {
+    if (!newBranchInput.trim()) return;
+    const newB = newBranchInput.trim();
+
+    // Optimistic Update
+    const updatedList = [...branchList, newB];
+    setBranchList(updatedList);
+    setBranch(newB);
+    setNewBranchInput('');
+
+    // Save to Firestore
+    if (auth.currentUser) {
+      try {
+        await setDoc(doc(db, "users", auth.currentUser.uid), {
+          branches: updatedList
+        }, { merge: true });
+      } catch (e) {
+        console.error(e);
+        Alert.alert("오류", "지점 저장 실패");
+      }
+    }
+  };
 
   // Default fallback if nothing is set
   const DEFAULT_SUBJECTS = ["피아노", "드럼", "보컬", "기타", "베이스"];
@@ -92,6 +136,7 @@ export default function StudentManagementScreen({ navigation }) {
         contact: contact,
         pinNumber: pinNumber,
         regDate: date,
+        branch: branch, // Save branch info
         subject: subject,
         tuitionFee: tuitionFee.replace(/[^0-9]/g, ''), // Save pure number
         usageType: usageType,
@@ -124,7 +169,7 @@ export default function StudentManagementScreen({ navigation }) {
           <View style={[styles.header, { borderColor: colors.border }]}>
             {/* ... header ... */}
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-              <Ionicons name="arrow-back" size={24} color={colors.foreground} />
+              <Text style={{ fontSize: 24 }}>⬅️</Text>
             </TouchableOpacity>
             <Text style={[styles.headerTitle, { color: colors.foreground }]}>신규 학생 등록</Text>
             <View style={{ width: 24 }} />
@@ -184,6 +229,45 @@ export default function StudentManagementScreen({ navigation }) {
                   value={tuitionFee}
                   onChangeText={setTuitionFee}
                 />
+              </View>
+
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>지점(관) 선택</Text>
+
+              {/* Dynamic Branch List */}
+              <View style={{ marginBottom: 10 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {(branchList.length > 0 ? branchList : ['1관', '2관']).map((b, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[
+                          styles.typeButton,
+                          branch === b ? { backgroundColor: colors.chart2, borderColor: colors.chart2 } : { backgroundColor: colors.card, borderColor: colors.border },
+                          { minWidth: 60, paddingHorizontal: 12 }
+                        ]}
+                        onPress={() => setBranch(b)}
+                      >
+                        <Text style={[styles.typeText, { color: branch === b ? '#fff' : colors.mutedForeground }]}>{b}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                {/* Quick Add Branch */}
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, height: 40, backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+                    placeholder="새 지점 직접 입력 (예: 3관)"
+                    value={newBranchInput}
+                    onChangeText={setNewBranchInput}
+                  />
+                  <TouchableOpacity
+                    onPress={handleQuickAddBranch}
+                    style={{ backgroundColor: colors.primary, height: 40, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 8 }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ 추가</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <Text style={[styles.label, { color: colors.mutedForeground }]}>수강 방식</Text>
@@ -253,7 +337,7 @@ export default function StudentManagementScreen({ navigation }) {
                         onPress={() => handleSubjectSelect(item)}
                       >
                         <Text style={[styles.modalItemText, { color: colors.foreground }]}>{item.name}</Text>
-                        {subject === item.name && <Ionicons name="checkmark" size={20} color={colors.chart3} />}
+                        {subject === item.name && <Text style={{ color: colors.chart3, fontSize: 18, fontWeight: 'bold' }}>✓</Text>}
                       </TouchableOpacity>
                     ))
                   ) : (
@@ -313,8 +397,24 @@ const styles = StyleSheet.create({
   dropdownButton: { width: '100%', height: 50, borderWidth: 1, borderRadius: 10, paddingHorizontal: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dropdownText: { fontSize: 16 },
 
-  saveButton: { width: '100%', height: 56, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 32, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, elevation: 4 },
-  saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  saveButton: {
+    width: '100%',
+    height: 56,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 32,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '85%', maxWidth: 350, borderRadius: 20, padding: 24, elevation: 5 },

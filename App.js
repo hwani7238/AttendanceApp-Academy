@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, Platform } from 'react-native';
-// import { useFonts } from 'expo-font'; // Removed for stability
-import { Ionicons } from '@expo/vector-icons';
+// import { useFonts } from 'expo-font'; // Removed
+// import { Ionicons } from '@expo/vector-icons'; // Removed
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -52,7 +52,7 @@ export default function App() {
   const [isError, setIsError] = useState(false);
   const [statusMessage, setStatusMessage] = useState("초기화 시작...");
 
-  // 🔥 REMOVED: useFonts hook (We use emojis now, so no need to block loading for fonts)
+  // 🔥 REMOVED: useFonts hook (User requested to drop it if it causes issues)
   // const [fontsLoaded] = useFonts({ ...Ionicons.font });
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export default function App() {
       setStatusMessage("Firebase 인증 시도 중...");
 
       const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => resolve(false), 5000);
+        setTimeout(() => resolve(false), 5000); // 5 sec timeout
       });
 
       try {
@@ -96,12 +96,12 @@ export default function App() {
     );
   }
 
-  if (!isAuthReady) { // Removed !fontsLoaded check
+  // Only wait for Auth
+  if (!isAuthReady) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#4285F4" />
         <Text style={styles.loadingText}>{statusMessage}</Text>
-        <Text style={{ marginTop: 10, fontSize: 12, color: '#999' }}>폰트 로딩 건너뜀 (Emoji 모드)</Text>
       </View>
     );
   }

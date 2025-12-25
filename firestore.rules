@@ -1,8 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 1. 사용자 정보 (users 컬렉션)
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 2. 학생 정보 (students 컬렉션)
+    match /students/{studentId} {
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    // 3. 출석 기록 (attendance 컬렉션)
+    match /attendance/{attendanceId} {
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    // 그 외 차단
     match /{document=**} {
-      allow read, write: if true;  // 👈 여기가 핵심입니다!
+      allow read, write: if false;
     }
   }
 }
