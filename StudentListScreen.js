@@ -429,9 +429,7 @@ export default function StudentListScreen({ navigation }) {
               ))}
             </View>
 
-            <TouchableOpacity onPress={fetchStudents} style={{ marginRight: 10, padding: 5 }}>
-              <Text style={{ fontSize: 20 }}>🔄</Text>
-            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={() => navigation.navigate("StudentManagement")}
               style={[styles.newAddButton, { backgroundColor: colors.chart3 }]}
