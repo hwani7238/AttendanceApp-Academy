@@ -18,9 +18,15 @@ export default function StudentManagementScreen({ navigation }) {
   const [count, setCount] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
 
-  const [subjectList, setSubjectList] = useState([]); // Stores objects {name, fee} or strings
+  const [subjectList, setSubjectList] = useState([]);
   const [branchList, setBranchList] = useState([]);
   const [newBranchInput, setNewBranchInput] = useState('');
+
+  // Teacher State
+  const [teacher, setTeacher] = useState('');
+  const [teacherList, setTeacherList] = useState([]);
+  const [teacherModalVisible, setTeacherModalVisible] = useState(false);
+  const [newTeacherInput, setNewTeacherInput] = useState('');
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -31,6 +37,7 @@ export default function StudentManagementScreen({ navigation }) {
           const data = userDoc.data();
           setSubjectList(data.subjects || []);
           setBranchList(data.branches || ['1관', '2관']);
+          setTeacherList(data.teachers || []);
         }
       } catch (e) {
         console.error(e);
@@ -62,6 +69,25 @@ export default function StudentManagementScreen({ navigation }) {
     }
   };
 
+
+
+  const handleRemoveTeacher = async (nameToRemove) => {
+    const updatedList = teacherList.filter(t => t !== nameToRemove);
+    setTeacherList(updatedList);
+    if (teacher === nameToRemove) setTeacher(''); // Reset selected if deleted
+
+    if (auth.currentUser) {
+      await setDoc(doc(db, "users", auth.currentUser.uid), {
+        teachers: updatedList
+      }, { merge: true });
+    }
+  };
+
+  const handleSelectTeacher = (t) => {
+    setTeacher(t);
+    setTeacherModalVisible(false);
+  };
+
   // Default fallback if nothing is set
   const DEFAULT_SUBJECTS = ["피아노", "드럼", "보컬", "기타", "베이스"];
 
@@ -69,7 +95,6 @@ export default function StudentManagementScreen({ navigation }) {
     const fetchSubjects = async () => {
       if (!auth.currentUser) return;
       try {
-        const { doc, getDoc } = require('firebase/firestore'); // Lazy import if needed or use existing
         const docRef = doc(db, "users", auth.currentUser.uid);
         const docSnap = await getDoc(docRef);
 
@@ -138,6 +163,7 @@ export default function StudentManagementScreen({ navigation }) {
         regDate: date,
         branch: branch, // Save branch info
         subject: subject,
+        teacher: teacher, // Save teacher info
         tuitionFee: tuitionFee.replace(/[^0-9]/g, ''), // Save pure number
         usageType: usageType,
         totalCount: usageType === 'session' ? parseInt(count) : 0,
@@ -230,6 +256,21 @@ export default function StudentManagementScreen({ navigation }) {
                   onChangeText={setTuitionFee}
                 />
               </View>
+
+              {/* Teacher Selection (Visible only when subject is selected) */}
+              {subject ? (
+                <View>
+                  <Text style={[styles.label, { color: colors.mutedForeground }]}>담당 강사</Text>
+                  <TouchableOpacity
+                    style={[styles.dropdownButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => setTeacherModalVisible(true)}
+                  >
+                    <Text style={[styles.dropdownText, { color: teacher ? colors.foreground : colors.mutedForeground }]}>
+                      {teacher || "강사 선택 (선택 사항)"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
 
               <Text style={[styles.label, { color: colors.mutedForeground }]}>지점(관) 선택</Text>
 
@@ -359,6 +400,47 @@ export default function StudentManagementScreen({ navigation }) {
                 </ScrollView>
                 <TouchableOpacity style={styles.modalCloseButton} onPress={() => setModalVisible(false)}>
                   <Text style={{ color: colors.destructive, fontWeight: 'bold' }}>닫기</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Teacher Management Modal */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={teacherModalVisible}
+            onRequestClose={() => setTeacherModalVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>강사 선택</Text>
+
+                {/* Teacher List */}
+                <ScrollView style={{ maxHeight: 300 }}>
+                  {teacherList.length > 0 ? (
+                    teacherList.map((t, index) => {
+                      const tName = typeof t === 'object' ? t.name : t;
+                      return (
+                        <View key={index} style={[styles.modalItem, { borderColor: colors.border }]}>
+                          <TouchableOpacity
+                            style={{ flex: 1 }}
+                            onPress={() => handleSelectTeacher(tName)}
+                          >
+                            <Text style={[styles.modalItemText, { color: colors.foreground }]}>{tName}</Text>
+                            {teacher === tName && <Text style={{ color: colors.chart3, fontSize: 13, fontWeight: 'bold' }}>[선택됨]</Text>}
+                          </TouchableOpacity>
+
+                        </View>
+                      );
+                    })
+                  ) : (
+                    <Text style={{ padding: 20, textAlign: 'center', color: colors.mutedForeground }}>등록된 강사가 없습니다.</Text>
+                  )}
+                </ScrollView>
+
+                <TouchableOpacity style={styles.modalCloseButton} onPress={() => setTeacherModalVisible(false)}>
+                  <Text style={{ color: colors.mutedForeground, fontWeight: 'bold' }}>닫기</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -13,6 +13,7 @@ import MainScreen from './MainScreen';
 import AttendanceScreen from './AttendanceScreen';
 import StudentManagementScreen from './StudentManagementScreen';
 import StudentListScreen from './StudentListScreen';
+import TeacherManagementScreen from './TeacherManagementScreen';
 import AttendanceHistoryScreen from './AttendanceHistoryScreen';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
 
@@ -121,6 +122,7 @@ export default function App() {
               <Stack.Screen name="Attendance" component={AttendanceScreen} />
               <Stack.Screen name="StudentList" component={StudentListScreen} />
               <Stack.Screen name="StudentManagement" component={StudentManagementScreen} />
+              <Stack.Screen name="TeacherManagement" component={TeacherManagementScreen} />
               <Stack.Screen name="AttendanceHistory" component={AttendanceHistoryScreen} />
               <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
             </Stack.Navigator>

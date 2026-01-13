@@ -211,6 +211,19 @@ export default function MainScreen({ navigation }) {
                   <Text style={styles.emojiIcon}>📅</Text>
                   <Text style={styles.buttonText}>출석 기록 조회</Text>
                 </TouchableOpacity>
+
+                {/* 강사/직원 관리 (Chart 4 - Yellow/Gold) */}
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    { backgroundColor: colors.chart4 }
+                  ]}
+                  onPress={() => navigation.navigate("TeacherManagement")}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.emojiIcon}>🧑‍🏫</Text>
+                  <Text style={styles.buttonText}>강사 및 직원 관리</Text>
+                </TouchableOpacity>
               </>
             )}
           </View>

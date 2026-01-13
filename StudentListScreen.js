@@ -1,15 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, Alert, Modal, TextInput, ScrollView } from 'react-native';
 import { db, auth } from './firebaseConfig';
 import { collection, onSnapshot, query, doc, getDoc, updateDoc, deleteDoc, where, getDocs, orderBy } from 'firebase/firestore';
 import { ResponsiveLayout } from './ResponsiveHandler';
 import { theme } from './Theme';
 // import { Ionicons } from '@expo/vector-icons'; // Removed for stability
 
+// Helper to safely convert Firestore Timestamp or Date to JS Date
+const safeDate = (data) => {
+  if (!data) return null;
+  if (typeof data.toDate === 'function') return data.toDate(); // Firestore Timestamp
+  if (data instanceof Date) return data; // JS Date Object
+  if (data.seconds) return new Date(data.seconds * 1000); // Legacy Timestamp object
+  return new Date(data); // String or other
+};
+
 const formatLocalDate = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  if (!date) return '';
+  const d = safeDate(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
 
@@ -98,7 +109,15 @@ export default function StudentListScreen({ navigation }) {
   const colors = theme.light;
   const [viewMode, setViewMode] = useState('ALL');
   const [filterBranch, setFilterBranch] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState(''); // Search State
+
   const [branchList, setBranchList] = useState(['1관', '2관']); // Default
+  const [teacherList, setTeacherList] = useState([]); // Teacher List
+
+  // Filter States
+  const [filterSubject, setFilterSubject] = useState('ALL');
+  const [filterTeacher, setFilterTeacher] = useState('ALL');
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
 
   useEffect(() => {
     const fetchBranches = async () => {
@@ -107,8 +126,18 @@ export default function StudentListScreen({ navigation }) {
         const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
         if (userDoc.exists()) {
           const data = userDoc.data();
+
           if (data.branches && data.branches.length > 0) {
             setBranchList(data.branches);
+          }
+          if (data.teachers && data.teachers.length > 0) {
+            setTeacherList(data.teachers);
+          }
+          if (data.subjects && data.subjects.length > 0) {
+            const raw = data.subjects;
+            // Handle both string and object {name, fee}
+            const processed = raw.map(s => (typeof s === 'object' && s !== null) ? s.name : s);
+            setSubjectList(processed);
           }
         }
       } catch (e) {
@@ -127,7 +156,9 @@ export default function StudentListScreen({ navigation }) {
   const [editSubject, setEditSubject] = useState("");
   const [editTotal, setEditTotal] = useState("");
   const [editCurrent, setEditCurrent] = useState("");
+
   const [editPin, setEditPin] = useState("");
+  const [editTeacher, setEditTeacher] = useState(""); // Teacher Edit State
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState("");
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -136,10 +167,10 @@ export default function StudentListScreen({ navigation }) {
 
   const [subjectModalVisible, setSubjectModalVisible] = useState(false);
   const [subjectList, setSubjectList] = useState([]);
+  const [teacherModalVisible, setTeacherModalVisible] = useState(false); // Reuse for editing teacher
 
   useEffect(() => {
     if (editModalVisible && auth.currentUser) {
-      const { doc, getDoc } = require('firebase/firestore');
       getDoc(doc(db, "users", auth.currentUser.uid)).then(snap => {
         if (snap.exists() && snap.data().subjects) {
           const raw = snap.data().subjects;
@@ -164,7 +195,7 @@ export default function StudentListScreen({ navigation }) {
         let remainingText = '';
 
         if (data.usageType === 'monthly') {
-          const lastDate = data.lastPaymentDate ? data.lastPaymentDate.toDate() : new Date(data.regDate);
+          const lastDate = safeDate(data.lastPaymentDate) || safeDate(data.regDate);
           const nextDate = new Date(lastDate);
           nextDate.setMonth(nextDate.getMonth() + 1);
           const today = new Date();
@@ -219,7 +250,7 @@ export default function StudentListScreen({ navigation }) {
 
           if (data.usageType === 'monthly') {
             // Monthly Logic
-            const lastDate = data.lastPaymentDate ? data.lastPaymentDate.toDate() : new Date(data.regDate);
+            const lastDate = safeDate(data.lastPaymentDate) || safeDate(data.regDate);
             const nextDate = new Date(lastDate);
             nextDate.setMonth(nextDate.getMonth() + 1);
 
@@ -257,7 +288,6 @@ export default function StudentListScreen({ navigation }) {
         setLastRefreshed(new Date().toLocaleTimeString());
       }, (error) => {
         console.error("Student Query Error:", error);
-        setLoading(false);
       });
     });
 
@@ -324,6 +354,7 @@ export default function StudentListScreen({ navigation }) {
   const openEditModal = (s) => {
     setEditingStudent(s); setEditName(s.name); setEditSubject(s.subject || '');
     setEditTotal(String(s.totalCount || 0)); setEditCurrent(String(s.currentCount || 0)); setEditPin(s.pinNumber || '');
+    setEditTeacher(s.teacher || ''); // Teacher
     setEditModalVisible(true);
   };
   const handleUpdate = async () => {
@@ -335,6 +366,7 @@ export default function StudentListScreen({ navigation }) {
         totalCount: parseInt(editTotal) || 0,
         currentCount: parseInt(editCurrent) || 0,
         pinNumber: editPin,
+        teacher: editTeacher // Save Teacher
         // Preserve existing fields like usageType
       });
       setEditModalVisible(false);
@@ -370,7 +402,7 @@ export default function StudentListScreen({ navigation }) {
           )}
         </View>
         <Text style={[styles.subText, { color: colors.mutedForeground }]}>
-          {item.subject} • {item.usageType === 'monthly' ? '월결제' : `잔여: ${(item.totalCount || 0) - (item.currentCount || 0)} (현재 ${item.currentCount} / 총 ${item.totalCount})`}
+          {item.subject} {item.teacher ? `(${item.teacher})` : ''} • {item.usageType === 'monthly' ? '월결제' : `잔여: ${(item.totalCount || 0) - (item.currentCount || 0)}`}
         </Text>
         <View style={styles.actionButtons}>
           {item.isPaymentNeeded && (
@@ -398,7 +430,7 @@ export default function StudentListScreen({ navigation }) {
       </View>
       <View style={styles.rightInfo}>
         <Text style={[styles.pinText, { color: colors.primary }]}>No.{item.pinNumber}</Text>
-        {item.lastPaymentDate && <Text style={[styles.dateText, { color: colors.mutedForeground }]}>{new Date(item.lastPaymentDate.seconds * 1000).toLocaleDateString()}</Text>}
+        {item.lastPaymentDate && <Text style={[styles.dateText, { color: colors.mutedForeground }]}>{safeDate(item.lastPaymentDate).toLocaleDateString()}</Text>}
       </View>
     </View>
   );
@@ -430,6 +462,8 @@ export default function StudentListScreen({ navigation }) {
             </View>
 
 
+
+
             <TouchableOpacity
               onPress={() => navigation.navigate("StudentManagement")}
               style={[styles.newAddButton, { backgroundColor: colors.chart3 }]}
@@ -453,18 +487,75 @@ export default function StudentListScreen({ navigation }) {
             </View>
             <View style={[styles.rightPanel, { backgroundColor: colors.background }]}>
               {viewMode === 'ALL' ? (
-                <FlatList
-                  data={students.filter(s => {
-                    if (filterBranch === 'ALL') return true;
-                    // Legacy Support: undefined/null branch treated as '2관'
-                    const studentBranch = s.branch || '2관';
-                    return studentBranch === filterBranch;
-                  })}
-                  renderItem={renderStudentItem}
-                  keyExtractor={item => item.id}
-                  contentContainerStyle={styles.listContainer}
-                  ListEmptyComponent={<View style={styles.emptyBox}><Text style={{ color: colors.mutedForeground }}>등록된 학생이 없습니다.</Text></View>}
-                />
+                <>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 15, marginTop: 15, marginBottom: 5 }}>
+                    {/* Search Bar */}
+                    <View style={[styles.searchContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border, flex: 1, margin: 0, marginRight: 10 }]}>
+                      <Text style={{ fontSize: 18, marginRight: 8 }}>🔍</Text>
+                      <TextInput
+                        style={[styles.searchInput, { color: colors.foreground }]}
+                        placeholder="이름 또는 출결번호 검색"
+                        placeholderTextColor={colors.mutedForeground}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                      />
+                      {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery('')}>
+                          <Text style={{ color: colors.mutedForeground, fontSize: 18 }}>✖️</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Filter/Sort Button */}
+                    <TouchableOpacity
+                      onPress={() => setFilterModalVisible(true)}
+                      style={{
+                        backgroundColor: colors.card,
+                        borderColor: (filterSubject !== 'ALL' || filterTeacher !== 'ALL') ? colors.chart3 : colors.border,
+                        borderWidth: (filterSubject !== 'ALL' || filterTeacher !== 'ALL') ? 2 : 1,
+                        borderRadius: 12,
+                        paddingHorizontal: 15,
+                        height: 50,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        flexDirection: 'row',
+                        gap: 6
+                      }}
+                    >
+                      <Text style={{ fontSize: 16, color: colors.foreground }}>정렬 ⇅</Text>
+                      {(filterSubject !== 'ALL' || filterTeacher !== 'ALL') && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.chart3, position: 'absolute', top: 5, right: 5 }} />}
+                    </TouchableOpacity>
+                  </View>
+
+                  <FlatList
+                    data={students.filter(s => {
+                      // 1. Branch Filter
+                      if (filterBranch !== 'ALL') {
+                        const studentBranch = s.branch || '2관';
+                        if (studentBranch !== filterBranch) return false;
+                      }
+
+                      // Filter by Subject
+                      if (filterSubject !== 'ALL' && s.subject !== filterSubject) return false;
+
+                      // Filter by Teacher
+                      if (filterTeacher !== 'ALL' && s.teacher !== filterTeacher) return false;
+
+                      // 2. Search Filter
+                      if (searchQuery.trim().length > 0) {
+                        const q = searchQuery.toLowerCase();
+                        const name = s.name ? s.name.toLowerCase() : '';
+                        const pin = s.pinNumber ? String(s.pinNumber) : '';
+                        return name.includes(q) || pin.includes(q);
+                      }
+                      return true;
+                    })}
+                    renderItem={renderStudentItem}
+                    keyExtractor={item => item.id}
+                    contentContainerStyle={styles.listContainer}
+                    ListEmptyComponent={<View style={styles.emptyBox}><Text style={{ color: colors.mutedForeground }}>등록된 학생이 없습니다.</Text></View>}
+                  />
+                </>
               ) : ( // Daily View
                 <View style={{ flex: 1 }}>
                   <View style={[styles.dailyHeaderBar, { backgroundColor: colors.muted }]}>
@@ -536,6 +627,14 @@ export default function StudentListScreen({ navigation }) {
                   <Text style={{ color: editSubject ? colors.foreground : colors.mutedForeground }}>{editSubject || "과목 선택"}</Text>
                 </TouchableOpacity>
 
+                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>담당 강사</Text>
+                <TouchableOpacity
+                  style={[styles.input, { justifyContent: 'center', backgroundColor: colors.inputBackground, borderColor: colors.input }]}
+                  onPress={() => setTeacherModalVisible(true)}
+                >
+                  <Text style={{ color: editTeacher ? colors.foreground : colors.mutedForeground }}>{editTeacher || "담당 강사 지정"}</Text>
+                </TouchableOpacity>
+
                 <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>출석번호 (4자리)</Text>
                 <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.input }]} value={editPin} onChangeText={setEditPin} keyboardType="numeric" maxLength={4} placeholder="출석번호" />
 
@@ -558,6 +657,109 @@ export default function StudentListScreen({ navigation }) {
                     <Text style={{ color: '#fff' }}>저장</Text>
                   </TouchableOpacity>
                 </View>
+
+
+
+              </View>
+            </View>
+          </Modal>
+
+          {/* Filter Modal */}
+          <Modal
+            animationType="fade"
+            transparent={true}
+            visible={filterModalVisible}
+            onRequestClose={() => setFilterModalVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>필터 설정</Text>
+
+                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>과목</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      style={[styles.filterTab, filterSubject === 'ALL' && { backgroundColor: colors.chart3 }]}
+                      onPress={() => setFilterSubject('ALL')}
+                    >
+                      <Text style={[styles.filterText, filterSubject === 'ALL' && { color: '#fff' }]}>전체</Text>
+                    </TouchableOpacity>
+                    {subjectList.map((sub, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        style={[styles.filterTab, filterSubject === sub && { backgroundColor: colors.chart3 }]}
+                        onPress={() => setFilterSubject(sub)}
+                      >
+                        <Text style={[styles.filterText, filterSubject === sub && { color: '#fff' }]}>{sub}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>선생님</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      style={[styles.filterTab, filterTeacher === 'ALL' && { backgroundColor: colors.chart3 }]}
+                      onPress={() => setFilterTeacher('ALL')}
+                    >
+                      <Text style={[styles.filterText, filterTeacher === 'ALL' && { color: '#fff' }]}>전체</Text>
+                    </TouchableOpacity>
+                    {teacherList.map((t, i) => {
+                      const tName = typeof t === 'object' ? t.name : t;
+                      return (
+                        <TouchableOpacity
+                          key={i}
+                          style={[styles.filterTab, filterTeacher === tName && { backgroundColor: colors.chart3 }]}
+                          onPress={() => setFilterTeacher(tName)}
+                        >
+                          <Text style={[styles.filterText, filterTeacher === tName && { color: '#fff' }]}>{tName}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                <TouchableOpacity
+                  style={[styles.modalBtn, { backgroundColor: colors.secondary, width: '100%' }]}
+                  onPress={() => setFilterModalVisible(false)}
+                >
+                  <Text style={{ color: colors.secondaryForeground }}>닫기</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Teacher Selection Modal For Edit */}
+          <Modal animationType="slide" transparent={true} visible={teacherModalVisible} onRequestClose={() => setTeacherModalVisible(false)}>
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: colors.card, maxHeight: 400 }]}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>강사 선택</Text>
+                <FlatList
+                  data={teacherList}
+                  keyExtractor={(item, index) => index.toString()}
+                  renderItem={({ item }) => {
+                    const tName = typeof item === 'object' ? item.name : item;
+                    return (
+                      <TouchableOpacity
+                        style={{ padding: 15, borderBottomWidth: 1, borderColor: colors.border }}
+                        onPress={() => {
+                          setEditTeacher(tName);
+                          setTeacherModalVisible(false);
+                        }}
+                      >
+                        <Text style={{ fontSize: 16, color: colors.foreground }}>{tName}</Text>
+                      </TouchableOpacity>
+                    );
+                  }}
+                  ListEmptyComponent={<Text style={{ padding: 20, textAlign: 'center', color: colors.mutedForeground }}>등록된 강사가 없습니다.</Text>}
+                />
+                <TouchableOpacity
+                  style={{ padding: 15, alignItems: 'center', marginTop: 10 }}
+                  onPress={() => setTeacherModalVisible(false)}
+                >
+                  <Text style={{ color: colors.destructive, fontWeight: 'bold' }}>닫기</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </Modal>
@@ -600,6 +802,20 @@ export default function StudentListScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: 15,
+    paddingHorizontal: 15,
+    height: 50,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    height: '100%',
+  },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, height: 60, borderBottomWidth: 1, justifyContent: 'space-between' },
   headerLeft: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
