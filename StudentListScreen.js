@@ -159,6 +159,8 @@ export default function StudentListScreen({ navigation }) {
 
   const [editPin, setEditPin] = useState("");
   const [editTeacher, setEditTeacher] = useState(""); // Teacher Edit State
+  const [editContact, setEditContact] = useState("");
+  const [editTuition, setEditTuition] = useState("");
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState("");
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -355,6 +357,8 @@ export default function StudentListScreen({ navigation }) {
     setEditingStudent(s); setEditName(s.name); setEditSubject(s.subject || '');
     setEditTotal(String(s.totalCount || 0)); setEditCurrent(String(s.currentCount || 0)); setEditPin(s.pinNumber || '');
     setEditTeacher(s.teacher || ''); // Teacher
+    setEditContact(s.contact || '');
+    setEditTuition(s.tuitionFee ? String(s.tuitionFee) : '');
     setEditModalVisible(true);
   };
   const handleUpdate = async () => {
@@ -366,7 +370,9 @@ export default function StudentListScreen({ navigation }) {
         totalCount: parseInt(editTotal) || 0,
         currentCount: parseInt(editCurrent) || 0,
         pinNumber: editPin,
-        teacher: editTeacher // Save Teacher
+        teacher: editTeacher, // Save Teacher
+        contact: editContact,
+        tuitionFee: editTuition.replace(/[^0-9]/g, '')
         // Preserve existing fields like usageType
       });
       setEditModalVisible(false);
@@ -618,6 +624,9 @@ export default function StudentListScreen({ navigation }) {
                 <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>이름</Text>
                 <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.input }]} value={editName} onChangeText={setEditName} placeholder="이름" />
 
+                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>연락처</Text>
+                <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.input }]} value={editContact} onChangeText={setEditContact} placeholder="연락처" keyboardType="phone-pad" />
+
                 <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>수강 과목</Text>
                 {/* Subject Dropdown Trigger */}
                 <TouchableOpacity
@@ -626,6 +635,9 @@ export default function StudentListScreen({ navigation }) {
                 >
                   <Text style={{ color: editSubject ? colors.foreground : colors.mutedForeground }}>{editSubject || "과목 선택"}</Text>
                 </TouchableOpacity>
+
+                <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>수업료</Text>
+                <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.input }]} value={editTuition} onChangeText={setEditTuition} placeholder="수업료" keyboardType="numeric" />
 
                 <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>담당 강사</Text>
                 <TouchableOpacity
