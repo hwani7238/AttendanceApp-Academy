@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, Platform, useWindowDimensions } from 'react-native';
 import { auth, db } from './firebaseConfig';
-import { auth, db } from './firebaseConfig';
-import { doc, getDoc, setDoc, writeBatch, collection } from 'firebase/firestore';
-import { studentData } from './assets/studentData';
+
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+
 import { ResponsiveLayout, useResponsive } from './ResponsiveHandler';
 import { theme } from './Theme';
 
@@ -154,61 +154,7 @@ export default function ProfileSettingsScreen({ navigation }) {
         }
     };
 
-    const handleImportData = async () => {
-        if (!auth.currentUser) return;
-        if (!studentData || studentData.length === 0) {
-            Alert.alert("오류", "데이터가 없습니다.");
-            return;
-        }
 
-        const confirmMsg = `총 ${studentData.length}명의 학생 데이터를 DB에 추가하시겠습니까?`;
-        if (Platform.OS === 'web') {
-            if (!confirm(confirmMsg)) return;
-        } else {
-            // Mobile confirmation
-            /* await new Promise ... simplified for now, just proceed or use proper Alert */
-        }
-
-        setLoading(true);
-        try {
-            const batchLimit = 400; // safe limit
-            let batch = writeBatch(db);
-            let count = 0;
-            let totalProcessed = 0;
-
-            for (const student of studentData) {
-                const newDocRef = doc(collection(db, "students"));
-                batch.set(newDocRef, {
-                    ...student,
-                    userId: auth.currentUser.uid,
-                    createdAt: new Date(),
-                    lastPaymentDate: new Date()
-                });
-                count++;
-                totalProcessed++;
-
-                if (count >= batchLimit) {
-                    await batch.commit();
-                    batch = writeBatch(db);
-                    count = 0;
-                    console.log(`Committed ${totalProcessed} records...`);
-                }
-            }
-
-            if (count > 0) {
-                await batch.commit();
-            }
-
-            const msg = `✅ ${totalProcessed}명 학생 등록 완료!`;
-            Platform.OS === 'web' ? alert(msg) : Alert.alert("완료", msg);
-
-        } catch (e) {
-            console.error(e);
-            Alert.alert("오류", "데이터 가져오기 실패: " + e.message);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     return (
         <ResponsiveLayout>
@@ -221,13 +167,7 @@ export default function ProfileSettingsScreen({ navigation }) {
                         </TouchableOpacity>
                         <Text style={[styles.title, { color: colors.foreground }]}>학원 정보 수정</Text>
 
-                        {/* Force Button in Header */}
-                        <TouchableOpacity
-                            style={{ backgroundColor: 'red', padding: 8, borderRadius: 8 }}
-                            onPress={handleImportData}
-                        >
-                            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>DATA IMPORT</Text>
-                        </TouchableOpacity>
+
                     </View>
 
                     <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
