@@ -3,6 +3,8 @@ import { StyleSheet, Text, View, TouchableOpacity, Platform, useWindowDimensions
 import { auth, db } from './firebaseConfig';
 import { signOut, deleteUser } from 'firebase/auth';
 import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch } from 'firebase/firestore';
+import { studentData } from './assets/studentData';
 import { ResponsiveLayout } from './ResponsiveHandler';
 import { theme } from './Theme';
 // import { Ionicons } from '@expo/vector-icons'; // 아이콘 추가 (Removed to prevent load errors)
@@ -167,7 +169,17 @@ export default function MainScreen({ navigation }) {
             </TouchableOpacity>
           )}
 
+
           <View style={styles.menuContainer}>
+            {/* FORCE BUTTON */}
+            {isAdminMode && (
+              <TouchableOpacity
+                style={{ backgroundColor: 'red', padding: 20, borderRadius: 10, alignItems: 'center', marginBottom: 20 }}
+                onPress={handleImportData}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18 }}>🚨 학생 데이터 가져오기 실행 (클릭) 🚨</Text>
+              </TouchableOpacity>
+            )}
             {/* 📱 [학생/모바일] 출석 체크 (Chart 1 - Vibrant Red/Orange) */}
             {isStudentMode && (
               <TouchableOpacity
@@ -210,6 +222,19 @@ export default function MainScreen({ navigation }) {
                 >
                   <Text style={styles.emojiIcon}>📅</Text>
                   <Text style={styles.buttonText}>출석 기록 조회</Text>
+                </TouchableOpacity>
+
+                {/* 시간표 조회 (Chart 5 - Orange) */}
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    { backgroundColor: colors.chart5 }
+                  ]}
+                  onPress={() => navigation.navigate("Timetable")}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.emojiIcon}>🕒</Text>
+                  <Text style={styles.buttonText}>시간표 조회</Text>
                 </TouchableOpacity>
 
                 {/* 강사/직원 관리 (Chart 4 - Yellow/Gold) */}

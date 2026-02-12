@@ -16,6 +16,7 @@ import StudentListScreen from './StudentListScreen';
 import TeacherManagementScreen from './TeacherManagementScreen';
 import AttendanceHistoryScreen from './AttendanceHistoryScreen';
 import ProfileSettingsScreen from './ProfileSettingsScreen';
+import TimetableScreen from './TimetableScreen';
 
 import { ResponsiveProvider } from './ResponsiveHandler';
 
@@ -125,6 +126,7 @@ export default function App() {
               <Stack.Screen name="TeacherManagement" component={TeacherManagementScreen} />
               <Stack.Screen name="AttendanceHistory" component={AttendanceHistoryScreen} />
               <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
+              <Stack.Screen name="Timetable" component={TimetableScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </ResponsiveProvider>
