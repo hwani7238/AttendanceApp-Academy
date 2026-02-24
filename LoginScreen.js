@@ -8,7 +8,7 @@ import { ResponsiveLayout } from './ResponsiveHandler';
 import { theme } from './Theme';
 
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen({ navigation, route }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -23,15 +23,17 @@ export default function LoginScreen({ navigation }) {
   const systemColorScheme = useColorScheme();
   const colors = theme.light;
 
+  const homeRoute = route?.params?.homeRoute || 'Main';
+
   // ... (useEffect for auth check)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        navigation.replace("Main");
+        navigation.replace(homeRoute);
       }
     });
     return unsubscribe;
-  }, []);
+  }, [navigation, homeRoute]);
 
   const getFriendlyErrorMessage = (errorCode) => {
     // ... (existing error messages)
@@ -269,89 +271,98 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
   },
   card: {
     width: '100%',
-    maxWidth: 400,
-    padding: 32,
-    borderRadius: 24,
+    maxWidth: 430,
+    padding: 34,
+    borderRadius: 22,
     borderWidth: 1,
+    borderColor: '#dbe3ee',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 10,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 6,
   },
   header: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '800',
-    marginBottom: 8,
+    marginBottom: 10,
     textAlign: 'center',
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
   },
   subHeader: {
-    fontSize: 16,
-    marginBottom: 40,
+    fontSize: 15,
+    marginBottom: 32,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
   },
   inputContainer: {
-    gap: 16,
-    marginBottom: 24,
+    gap: 14,
+    marginBottom: 22,
   },
   input: {
     width: '100%',
-    height: 52,
+    height: 54,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 16,
     fontSize: 16,
   },
   buttonContainer: {
     gap: 0,
-    marginTop: 8,
+    marginTop: 10,
   },
   button: {
     width: '100%',
-    height: 52,
-    borderRadius: 12,
+    height: 54,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2, // Colored shadow support (iOS)
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
     elevation: 4,
   },
   buttonText: {
     fontWeight: '700',
     fontSize: 16,
+    letterSpacing: 0.1,
   },
   errorText: {
     color: '#d4183d',
-    marginBottom: 16,
+    marginBottom: 14,
     textAlign: 'center',
     fontSize: 14,
     fontWeight: '500',
+    lineHeight: 20,
   },
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
   },
   modalContent: {
     width: '90%',
     maxWidth: 400,
-    padding: 24,
-    borderRadius: 16,
+    padding: 26,
+    borderRadius: 20,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
     elevation: 5,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 21,
+    fontWeight: '800',
     marginBottom: 16,
     textAlign: 'center',
   },

@@ -12,13 +12,17 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-     "platforms": [
+    "platforms": [
       "ios",
       "android",
       "web"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.whee.musicacademy.attendanceapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -29,6 +33,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2bcded9d-2ccf-4694-ba6f-ae52be1e3e98"
+      }
     }
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
 import { db, auth } from './firebaseConfig';
 import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDoc, updateDoc, Timestamp, increment } from 'firebase/firestore';
@@ -16,13 +16,22 @@ export default function AttendanceHistoryScreen({ navigation }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [filterBranch, setFilterBranch] = useState('ALL');
   const [branchList, setBranchList] = useState(['1관', '2관']); // Default
-  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState(auth.currentUser?.uid || null);
+  const [isStudentsLoading, setIsStudentsLoading] = useState(true);
+  const [isAttendanceLoading, setIsAttendanceLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      setUserId(user?.uid || null);
+    });
+    return unsubscribeAuth;
+  }, []);
 
   useEffect(() => {
     const fetchBranches = async () => {
-      if (!auth.currentUser) return;
+      if (!userId) return;
       try {
-        const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+        const userDoc = await getDoc(doc(db, "users", userId));
         if (userDoc.exists()) {
           const data = userDoc.data();
           if (data.branches && data.branches.length > 0) {
@@ -34,10 +43,10 @@ export default function AttendanceHistoryScreen({ navigation }) {
       }
     };
     fetchBranches();
-  }, []);
+  }, [userId]);
 
   // Ref for Auto-Scroll
-  const scrollRef = React.useRef(null);
+  const scrollRef = useRef(null);
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const { isMobile } = useResponsive() || { isMobile: true };
 
@@ -47,14 +56,20 @@ export default function AttendanceHistoryScreen({ navigation }) {
 
   const [students, setStudents] = useState([]);
   const [attendanceMap, setAttendanceMap] = useState({});
-  const [groupedStudents, setGroupedStudents] = useState({});
   const [expandedSubjects, setExpandedSubjects] = useState({});
   const [sortBy, setSortBy] = useState('name');
+  const loading = isStudentsLoading || isAttendanceLoading;
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-  const daysInMonth = getDaysInMonth(year, month);
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const daysInMonth = useMemo(() => getDaysInMonth(year, month), [year, month]);
+  const daysArray = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
+  const dayMeta = useMemo(() => {
+    return daysArray.map((day) => {
+      const dayOfWeek = getDayOfWeek(year, month, day);
+      return { day, isSat: dayOfWeek === 6, isSun: dayOfWeek === 0 };
+    });
+  }, [daysArray, year, month]);
 
   // Auto-Scroll Effect
   useEffect(() => {
@@ -74,79 +89,45 @@ export default function AttendanceHistoryScreen({ navigation }) {
   }, [loading, year, month]);
 
   useEffect(() => {
-    setLoading(true);
-    let unsubscribeStudents = () => { };
+    if (!userId) {
+      setStudents([]);
+      setExpandedSubjects({});
+      setIsStudentsLoading(false);
+      return;
+    }
 
-    // Listen for Auth Changes to ensure we have a user before querying
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      // 1. Cleanup previous listener immediately when auth state changes
-      unsubscribeStudents();
-
-      if (!user) {
-        setLoading(false);
-        setStudents([]);
-        setGroupedStudents({});
-        setExpandedSubjects({});
-        return;
-      }
-
-      // 2. Setup new listener for the current user
-      const q = query(collection(db, "students"), where("userId", "==", user.uid), orderBy("name"));
-      unsubscribeStudents = onSnapshot(q, (snapshot) => {
+    setIsStudentsLoading(true);
+    const q = query(collection(db, "students"), where("userId", "==", userId), orderBy("name"));
+    const unsubscribeStudents = onSnapshot(q, (snapshot) => {
         const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setStudents(list);
-
-        const groups = {};
-        const initialExpanded = {};
-
-        list.forEach(s => {
-          let subj = s.subject || '기타';
-          if (s.studentStatus === 'break') subj = '💤 휴원생';
-          if (!groups[subj]) groups[subj] = [];
-          groups[subj].push(s);
-          initialExpanded[subj] = true;
-        });
-
-        setGroupedStudents(groups);
-        setExpandedSubjects(prev => Object.keys(prev).length === 0 ? initialExpanded : prev);
-        setLoading(false); // Students loaded
+        setIsStudentsLoading(false);
       }, (error) => {
         console.error("Student Query Error:", error);
-        setLoading(false);
+        setIsStudentsLoading(false);
       });
-    });
-
-    return () => {
-      unsubscribeAuth();
-      unsubscribeStudents();
-    };
-  }, []);
+    return unsubscribeStudents;
+  }, [userId]);
 
   useEffect(() => {
-    setLoading(true);
-    let unsubscribeAttendance = () => { };
+    if (!userId) {
+      setAttendanceMap({});
+      setIsAttendanceLoading(false);
+      return;
+    }
 
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      unsubscribeAttendance(); // Cleanup previous listener
+    setIsAttendanceLoading(true);
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0, 23, 59, 59);
 
-      if (!user) {
-        setLoading(false);
-        setAttendanceMap({});
-        return;
-      }
+    const q = query(
+      collection(db, "attendance"),
+      where("userId", "==", userId),
+      where("timestamp", ">=", start),
+      where("timestamp", "<=", end)
+    );
 
-      const start = new Date(year, month, 1);
-      const end = new Date(year, month + 1, 0, 23, 59, 59);
-
-      // 2. 내 출석 기록만 가져오기
-      const q = query(
-        collection(db, "attendance"),
-        where("userId", "==", user.uid),
-        where("timestamp", ">=", start),
-        where("timestamp", "<=", end)
-      );
-
-      unsubscribeAttendance = onSnapshot(q, (snapshot) => {
+    const unsubscribeAttendance = onSnapshot(q, (snapshot) => {
         const newMap = {};
         snapshot.forEach(doc => {
           const data = doc.data();
@@ -160,18 +141,13 @@ export default function AttendanceHistoryScreen({ navigation }) {
           newMap[sid][date] = { id: doc.id, status: status };
         });
         setAttendanceMap(newMap);
-        setLoading(false);
+        setIsAttendanceLoading(false);
       }, (error) => {
         console.error("Attendance Query Error:", error);
-        setLoading(false);
+        setIsAttendanceLoading(false);
       });
-    });
-
-    return () => {
-      unsubscribeAuth();
-      unsubscribeAttendance();
-    };
-  }, [year, month]);
+    return unsubscribeAttendance;
+  }, [userId, year, month]);
 
   const handlePrevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
@@ -179,7 +155,7 @@ export default function AttendanceHistoryScreen({ navigation }) {
   const toggleSortMode = () => setSortBy(prev => prev === 'name' ? 'regDate' : 'name');
 
   const sortSubjects = (subjects) => {
-    return subjects.sort((a, b) => {
+    return [...subjects].sort((a, b) => {
       if (a === '💤 휴원생') return 1;
       if (b === '💤 휴원생') return -1;
       const idxA = SUBJECT_ORDER.indexOf(a);
@@ -191,7 +167,68 @@ export default function AttendanceHistoryScreen({ navigation }) {
     });
   };
 
+  const groupedStudents = useMemo(() => {
+    const groups = {};
+    students.forEach((s) => {
+      let subj = s.subject || '기타';
+      if (s.studentStatus === 'break') subj = '💤 휴원생';
+      if (!groups[subj]) groups[subj] = [];
+      groups[subj].push(s);
+    });
+    return groups;
+  }, [students]);
+
+  const sortedSubjects = useMemo(() => sortSubjects(Object.keys(groupedStudents)), [groupedStudents]);
+
+  useEffect(() => {
+    setExpandedSubjects((prev) => {
+      const next = {};
+      sortedSubjects.forEach((subject) => {
+        next[subject] = prev[subject] ?? true;
+      });
+      return next;
+    });
+  }, [sortedSubjects]);
+
+  const attendanceCountsByStudent = useMemo(() => {
+    const counts = {};
+    Object.entries(attendanceMap).forEach(([studentId, byDay]) => {
+      const records = Object.values(byDay);
+      counts[studentId] = {
+        presentCount: records.filter((r) => r.status === 'present' || r.status === 'makeup').length,
+        absentCount: records.filter((r) => r.status === 'absent').length,
+      };
+    });
+    return counts;
+  }, [attendanceMap]);
+
+  const visibleSubjectGroups = useMemo(() => {
+    return sortedSubjects
+      .map((subject) => {
+        const source = groupedStudents[subject] || [];
+        const filtered = source.filter((s) => {
+          if (filterBranch === 'ALL') return true;
+          const studentBranch = s.branch || '2관';
+          return studentBranch === filterBranch;
+        });
+        if (filtered.length === 0) return null;
+
+        const studentList = [...filtered].sort((a, b) => {
+          if (sortBy === 'name') return a.name.localeCompare(b.name);
+          return (a.regDate || '').localeCompare(b.regDate || '');
+        });
+
+        return {
+          subject,
+          studentList,
+          isBreakGroup: subject === '💤 휴원생',
+        };
+      })
+      .filter(Boolean);
+  }, [sortedSubjects, groupedStudents, filterBranch, sortBy]);
+
   const handleCellPress = async (student, day) => {
+    if (!userId) return;
     if (student.studentStatus === 'break') {
       Alert.alert("알림", "휴원생은 출석 체크 불가");
       return;
@@ -202,7 +239,7 @@ export default function AttendanceHistoryScreen({ navigation }) {
       try {
         const targetDate = new Date(year, month, day, 12, 0, 0);
         await addDoc(collection(db, "attendance"), {
-          userId: auth.currentUser.uid, // 🔑 Private Data
+          userId, // 🔑 Private Data
           studentId: student.id,
           name: student.name,
           subject: student.subject,
@@ -310,27 +347,8 @@ export default function AttendanceHistoryScreen({ navigation }) {
           </View>
 
           <ScrollView style={styles.verticalScroll} contentContainerStyle={{ paddingBottom: 50 }}>
-            {sortSubjects(Object.keys(groupedStudents)).map((subject) => {
+            {visibleSubjectGroups.map(({ subject, studentList, isBreakGroup }) => {
               const isExpanded = expandedSubjects[subject];
-
-              let studentList = [...groupedStudents[subject]];
-
-              // Filter by Branch
-              studentList = studentList.filter(s => {
-                if (filterBranch === 'ALL') return true;
-                const studentBranch = s.branch || '2관';
-                return studentBranch === filterBranch;
-              });
-
-              if (studentList.length === 0) return null; // Hide subject if no students match
-
-              if (sortBy === 'name') {
-                studentList.sort((a, b) => a.name.localeCompare(b.name));
-              } else {
-                studentList.sort((a, b) => (a.regDate || '').localeCompare(b.regDate || ''));
-              }
-
-              const isBreakGroup = subject === '💤 휴원생';
 
               return (
                 <View key={subject} style={[styles.card, { backgroundColor: isBreakGroup ? colors.muted : colors.card, borderColor: colors.border }]}>
@@ -359,10 +377,7 @@ export default function AttendanceHistoryScreen({ navigation }) {
                           </Text>
                         </View>
                         {studentList.map((student) => {
-                          const records = Object.values(attendanceMap[student.id] || {});
-                          // Update: Count 'makeup' as present
-                          const presentCount = records.filter(r => r.status === 'present' || r.status === 'makeup').length;
-                          const absentCount = records.filter(r => r.status === 'absent').length;
+                          const counts = attendanceCountsByStudent[student.id] || { presentCount: 0, absentCount: 0 };
 
                           return (
                             <TouchableOpacity
@@ -380,8 +395,8 @@ export default function AttendanceHistoryScreen({ navigation }) {
                               </Text>
 
                               <View style={styles.countRow}>
-                                <Text style={{ fontSize: 10, color: colors.chart2, fontWeight: 'bold' }}>출석 {presentCount}</Text>
-                                <Text style={{ fontSize: 10, color: colors.destructive, fontWeight: 'bold' }}>결석 {absentCount}</Text>
+                                <Text style={{ fontSize: 10, color: colors.chart2, fontWeight: 'bold' }}>출석 {counts.presentCount}</Text>
+                                <Text style={{ fontSize: 10, color: colors.destructive, fontWeight: 'bold' }}>결석 {counts.absentCount}</Text>
                               </View>
                             </TouchableOpacity>
                           );
@@ -396,11 +411,7 @@ export default function AttendanceHistoryScreen({ navigation }) {
                       >
                         <View>
                           <View style={styles.row}>
-                            {daysArray.map(day => {
-                              const dayOfWeek = getDayOfWeek(year, month, day);
-                              const isSat = dayOfWeek === 6;
-                              const isSun = dayOfWeek === 0;
-
+                            {dayMeta.map(({ day, isSat, isSun }) => {
                               return (
                                 <View key={day} style={[styles.dateCell, { width: CELL_WIDTH, backgroundColor: colors.secondary }]}>
                                   <Text style={[
@@ -418,7 +429,7 @@ export default function AttendanceHistoryScreen({ navigation }) {
 
                           {studentList.map((student) => (
                             <View key={student.id} style={styles.row}>
-                              {daysArray.map(day => {
+                              {dayMeta.map(({ day }) => {
                                 const record = attendanceMap[student.id]?.[day];
                                 const status = record?.status;
 

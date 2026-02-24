@@ -224,7 +224,7 @@ export default function AttendanceScreen({ navigation }) {
         </View>
 
         {/* 하단 키패드 섹션 (Blue) */}
-        <View style={[styles.bottomSection, { backgroundColor: '#3b82f6' }]}>
+        <View style={[styles.bottomSection, { backgroundColor: colors.chart3 }]}>
           <Text style={styles.instructionText}>출결번호 4자리를 입력하세요</Text>
           <View style={styles.keypadGrid}>
             {['1', '2', '3', '4', '5', '6', '7', '8', '9', '취소', '0', '지움'].map((key) => {
@@ -234,8 +234,9 @@ export default function AttendanceScreen({ navigation }) {
                   key={key}
                   style={[
                     styles.keyButton,
-                    // 숫자키는 약간 투명한 흰색, 컨트롤키는 완전 투명하거나 다른 색
-                    !isControl && { backgroundColor: 'rgba(255,255,255,0.2)' }
+                    !isControl
+                      ? { backgroundColor: 'rgba(255,255,255,0.2)' }
+                      : { backgroundColor: 'rgba(15,23,42,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' }
                   ]}
                   onPress={() => handlePress(key)}
                   activeOpacity={0.6}
@@ -304,39 +305,55 @@ export default function AttendanceScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, width: '100%', height: '100%' },
 
-  topSection: { flex: 1, paddingHorizontal: 20, paddingTop: 20, alignItems: 'center', justifyContent: 'center' },
-  header: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  headerTitle: { fontSize: 18, fontWeight: 'bold' },
-  backBtn: { padding: 5 },
+  topSection: { flex: 1, paddingHorizontal: 24, paddingTop: 22, alignItems: 'center', justifyContent: 'center' },
+  header: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  headerTitle: { fontSize: 20, fontWeight: '700', letterSpacing: -0.2 },
+  backBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9'
+  },
 
-  timeContainer: { alignItems: 'center', marginBottom: 40 },
-  dateText: { fontSize: 18, marginBottom: 5 },
+  timeContainer: { alignItems: 'center', marginBottom: 34 },
+  dateText: { fontSize: 17, marginBottom: 8, fontWeight: '500' },
   clockRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  ampmText: { fontSize: 20, fontWeight: 'bold', marginBottom: 12, marginRight: 8 },
-  timeText: { fontSize: 64, fontWeight: '800' },
+  ampmText: { fontSize: 18, fontWeight: '700', marginBottom: 10, marginRight: 8 },
+  timeText: { fontSize: 58, fontWeight: '800', letterSpacing: -1.5 },
 
-  pinContainer: { flexDirection: 'row', gap: 16, marginBottom: 20 },
-  pinBox: { width: 64, height: 72, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  pinContainer: { flexDirection: 'row', gap: 14, marginBottom: 16 },
+  pinBox: { width: 62, height: 70, borderRadius: 14, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   pinText: { fontSize: 32, fontWeight: 'bold' },
 
-  bottomSection: { flex: 1.4, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: 32, alignItems: 'center', justifyContent: 'center', paddingBottom: 20 },
-  instructionText: { color: 'white', fontSize: 16, fontWeight: '600', marginBottom: 24, opacity: 0.9 },
+  bottomSection: { flex: 1.4, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 28, alignItems: 'center', justifyContent: 'center', paddingBottom: 20 },
+  instructionText: { color: 'white', fontSize: 15, fontWeight: '700', marginBottom: 22, opacity: 0.95 },
   keypadGrid: { width: '85%', maxWidth: 400, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
 
-  keyButton: { width: '31%', height: 72, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  keyText: { color: 'white', fontSize: 32, fontWeight: '500' },
+  keyButton: { width: '31%', height: 70, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
+  keyText: { color: 'white', fontSize: 30, fontWeight: '600' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '85%', maxWidth: 380, borderRadius: 24, padding: 32, elevation: 10, alignItems: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.58)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: {
+    width: '85%',
+    maxWidth: 380,
+    borderRadius: 22,
+    padding: 30,
+    elevation: 10,
+    alignItems: 'center',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+  },
 
-  modalTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 16 },
-  siblingItem: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, marginBottom: 12, borderRadius: 12 },
+  modalTitle: { fontSize: 21, fontWeight: '800', textAlign: 'center', marginBottom: 16 },
+  siblingItem: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, marginBottom: 10, borderRadius: 14 },
   siblingName: { fontSize: 18, fontWeight: 'bold' },
   siblingSubject: { fontSize: 16, fontWeight: '600' },
-  closeButton: { marginTop: 16, padding: 12, width: '100%', alignItems: 'center', borderRadius: 12 },
+  closeButton: { marginTop: 14, padding: 13, width: '100%', alignItems: 'center', borderRadius: 12 },
 
-  resultContent: { alignItems: 'center', paddingTop: 40, paddingBottom: 40 },
+  resultContent: { alignItems: 'center', paddingTop: 36, paddingBottom: 36 },
   resultTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 12 },
-  resultMessage: { fontSize: 18, textAlign: 'center', marginBottom: 32, lineHeight: 26 },
+  resultMessage: { fontSize: 17, textAlign: 'center', marginBottom: 28, lineHeight: 25 },
   countdownText: { fontSize: 14, opacity: 0.7 },
 });

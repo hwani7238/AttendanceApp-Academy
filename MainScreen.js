@@ -193,6 +193,19 @@ export default function MainScreen({ navigation }) {
 
                 <View style={styles.menuContainer}>
                   <>
+                    {/* 강제 학생 모드 이동 버튼 (모바일 인식 실패 또는 PC에서 띄울 때 대비) */}
+                    <TouchableOpacity
+                      style={[
+                        styles.button,
+                        { backgroundColor: colors.primary, height: 70, marginBottom: 10 }
+                      ]}
+                      onPress={() => navigation.navigate("Attendance")}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={[styles.emojiIcon, { fontSize: 26 }]}>✅</Text>
+                      <Text style={[styles.buttonText, { fontSize: 20 }]}>학생 출석체크 모드 열기</Text>
+                    </TouchableOpacity>
+
                     {/* 학생 관리 (Chart 3 - Blue) */}
                     <TouchableOpacity
                       style={[

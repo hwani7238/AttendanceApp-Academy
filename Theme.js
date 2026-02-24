@@ -1,32 +1,31 @@
 export const theme = {
     light: {
-        background: '#ffffff',
-        foreground: '#09090b', // Deep Black/Gray
+        background: '#f4f7fb',
+        foreground: '#0f172a',
         card: '#ffffff',
-        cardForeground: '#09090b',
+        cardForeground: '#0f172a',
         popover: '#ffffff',
-        popoverForeground: '#09090b',
-        primary: '#09090b',
+        popoverForeground: '#0f172a',
+        primary: '#0f172a',
         primaryForeground: '#ffffff',
-        secondary: '#f4f4f5',
-        secondaryForeground: '#18181b',
-        muted: '#f4f4f5',
-        mutedForeground: '#71717a',
-        accent: '#f4f4f5',
-        accentForeground: '#18181b',
-        destructive: '#ef4444', // Strong Red
+        secondary: '#eef2f7',
+        secondaryForeground: '#1e293b',
+        muted: '#edf2f7',
+        mutedForeground: '#64748b',
+        accent: '#edf2f7',
+        accentForeground: '#1e293b',
+        destructive: '#ef4444',
         destructiveForeground: '#ffffff',
-        border: '#e4e4e7',
-        input: '#e4e4e7',
-        inputBackground: '#ffffff',
-        ring: '#18181b',
-        radius: 12, // Standard rounding
-        // Original Vibrant Chart Colors
-        chart1: '#e76e50', // Orange-Red
-        chart2: '#2a9d8f', // Teal
-        chart3: '#2a6f97', // Blue
-        chart4: '#e9c46a', // Yellow/Gold
-        chart5: '#f4a261', // Orange
+        border: '#dbe3ee',
+        input: '#d3dde8',
+        inputBackground: '#f8fafc',
+        ring: '#1e293b',
+        radius: 14,
+        chart1: '#ef6c57',
+        chart2: '#2b9d8f',
+        chart3: '#2563eb',
+        chart4: '#d9b657',
+        chart5: '#f39a4f',
     },
     dark: {
         background: '#09090b',

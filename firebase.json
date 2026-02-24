@@ -4,6 +4,7 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
+    "site": "whee-music-academy",
     "public": "dist",
     "ignore": [
       "firebase.json",

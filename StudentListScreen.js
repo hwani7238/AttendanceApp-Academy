@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View, FlatList, TouchableOpacity, Alert, Modal, TextInput, ScrollView } from 'react-native';
 import { db, auth } from './firebaseConfig';
-import { collection, onSnapshot, query, doc, getDoc, updateDoc, deleteDoc, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, getDoc, updateDoc, deleteDoc, where, getDocs } from 'firebase/firestore';
 import { ResponsiveLayout } from './ResponsiveHandler';
 import { theme } from './Theme';
 // import { Ionicons } from '@expo/vector-icons'; // Removed for stability
@@ -22,6 +22,44 @@ const formatLocalDate = (date) => {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const withPaymentStatus = (docSnapshot) => {
+  const data = docSnapshot.data();
+  let isPaymentNeeded = false;
+  let remainingText = '';
+
+  if (data.usageType === 'monthly') {
+    const lastDate = safeDate(data.lastPaymentDate) || safeDate(data.regDate);
+    const nextDate = new Date(lastDate);
+    nextDate.setMonth(nextDate.getMonth() + 1);
+    const today = new Date();
+    const diffTime = nextDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 1) {
+      isPaymentNeeded = true;
+      remainingText = diffDays < 0 ? `연체됨 (${Math.abs(diffDays)}일)` : (diffDays === 0 ? '오늘 결제' : '내일 결제');
+    } else {
+      remainingText = `결제일: ${nextDate.getMonth() + 1}/${nextDate.getDate()}`;
+    }
+  } else {
+    const remaining = (data.totalCount || 0) - (data.currentCount || 0);
+    isPaymentNeeded = remaining <= 1;
+    remainingText = remaining <= 0 ? '소진됨' : `${remaining}회 남음`;
+  }
+
+  return { id: docSnapshot.id, ...data, isPaymentNeeded, remainingText };
+};
+
+const sortStudentList = (list) => {
+  list.sort((a, b) => {
+    if (a.isPaymentNeeded === b.isPaymentNeeded) {
+      return a.name.localeCompare(b.name);
+    }
+    return a.isPaymentNeeded ? -1 : 1;
+  });
+  return list;
 };
 
 const MiniCalendar = ({ selectedDate, onSelectDate, onReset, colors }) => {
@@ -165,7 +203,6 @@ export default function StudentListScreen({ navigation }) {
   const [confirmMessage, setConfirmMessage] = useState("");
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [actionType, setActionType] = useState(null);
-  const [lastRefreshed, setLastRefreshed] = useState(new Date().toLocaleTimeString());
 
   const [subjectModalVisible, setSubjectModalVisible] = useState(false);
   const [subjectList, setSubjectList] = useState([]);
@@ -186,51 +223,6 @@ export default function StudentListScreen({ navigation }) {
     }
   }, [editModalVisible]);
 
-  const fetchStudents = async () => {
-    if (!auth.currentUser) return;
-    try {
-      const q = query(collection(db, "students"), where("userId", "==", auth.currentUser.uid));
-      const snapshot = await getDocs(q);
-      const list = snapshot.docs.map(doc => {
-        const data = doc.data();
-        let isPaymentNeeded = false;
-        let remainingText = '';
-
-        if (data.usageType === 'monthly') {
-          const lastDate = safeDate(data.lastPaymentDate) || safeDate(data.regDate);
-          const nextDate = new Date(lastDate);
-          nextDate.setMonth(nextDate.getMonth() + 1);
-          const today = new Date();
-          const diffTime = nextDate - today;
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          if (diffDays <= 1) {
-            isPaymentNeeded = true;
-            remainingText = diffDays < 0 ? `연체됨 (${Math.abs(diffDays)}일)` : (diffDays === 0 ? '오늘 결제' : '내일 결제');
-          } else {
-            remainingText = `결제일: ${nextDate.getMonth() + 1}/${nextDate.getDate()}`;
-          }
-        } else {
-          const remaining = (data.totalCount || 0) - (data.currentCount || 0);
-          isPaymentNeeded = remaining <= 1;
-          remainingText = remaining <= 0 ? '소진됨' : `${remaining}회 남음`;
-        }
-        return { id: doc.id, ...data, isPaymentNeeded, remainingText };
-      });
-
-      list.sort((a, b) => {
-        if (a.isPaymentNeeded === b.isPaymentNeeded) {
-          return a.name.localeCompare(b.name);
-        }
-        return a.isPaymentNeeded ? -1 : 1;
-      });
-      setStudents(list);
-      setLastRefreshed(new Date().toLocaleTimeString());
-    } catch (e) {
-      console.error(e);
-      Alert.alert("새로고침 실패", e.message);
-    }
-  };
-
   useEffect(() => {
     let unsubscribeStudents = () => { };
 
@@ -245,49 +237,7 @@ export default function StudentListScreen({ navigation }) {
 
       const q = query(collection(db, "students"), where("userId", "==", user.uid));
       unsubscribeStudents = onSnapshot(q, (snapshot) => {
-        const list = snapshot.docs.map(doc => {
-          const data = doc.data();
-          let isPaymentNeeded = false;
-          let remainingText = '';
-
-          if (data.usageType === 'monthly') {
-            // Monthly Logic
-            const lastDate = safeDate(data.lastPaymentDate) || safeDate(data.regDate);
-            const nextDate = new Date(lastDate);
-            nextDate.setMonth(nextDate.getMonth() + 1);
-
-            // Check if today is day before nextDate or passed
-            const today = new Date();
-            const diffTime = nextDate - today;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-            // Alert if within 1 day (tomorrow is due) or overdue
-            if (diffDays <= 1) {
-              isPaymentNeeded = true;
-              remainingText = diffDays < 0 ? `연체됨 (${Math.abs(diffDays)}일)` : (diffDays === 0 ? '오늘 결제' : '내일 결제');
-            } else {
-              remainingText = `결제일: ${nextDate.getMonth() + 1}/${nextDate.getDate()}`;
-            }
-
-          } else {
-            // Session Logic (Default)
-            const remaining = (data.totalCount || 0) - (data.currentCount || 0);
-            isPaymentNeeded = remaining <= 1;
-            remainingText = remaining <= 0 ? '소진됨' : `${remaining}회 남음`;
-          }
-
-          return { id: doc.id, ...data, isPaymentNeeded, remainingText };
-        });
-
-        // Sort: Payment Needed first
-        list.sort((a, b) => {
-          if (a.isPaymentNeeded === b.isPaymentNeeded) {
-            return a.name.localeCompare(b.name);
-          }
-          return a.isPaymentNeeded ? -1 : 1;
-        });
-        setStudents(list);
-        setLastRefreshed(new Date().toLocaleTimeString());
+        setStudents(sortStudentList(snapshot.docs.map(withPaymentStatus)));
       }, (error) => {
         console.error("Student Query Error:", error);
       });
@@ -378,6 +328,28 @@ export default function StudentListScreen({ navigation }) {
       setEditModalVisible(false);
     } catch (e) { alert("수정 실패"); }
   };
+
+  const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
+
+  const filteredStudents = useMemo(() => {
+    return students.filter((s) => {
+      if (filterBranch !== 'ALL') {
+        const studentBranch = s.branch || '2관';
+        if (studentBranch !== filterBranch) return false;
+      }
+
+      if (filterSubject !== 'ALL' && s.subject !== filterSubject) return false;
+      if (filterTeacher !== 'ALL' && s.teacher !== filterTeacher) return false;
+
+      if (normalizedSearchQuery.length > 0) {
+        const name = s.name ? s.name.toLowerCase() : '';
+        const pin = s.pinNumber ? String(s.pinNumber) : '';
+        return name.includes(normalizedSearchQuery) || pin.includes(normalizedSearchQuery);
+      }
+
+      return true;
+    });
+  }, [students, filterBranch, filterSubject, filterTeacher, normalizedSearchQuery]);
 
   const renderStudentItem = ({ item }) => (
     <View style={[
@@ -534,31 +506,14 @@ export default function StudentListScreen({ navigation }) {
                   </View>
 
                   <FlatList
-                    data={students.filter(s => {
-                      // 1. Branch Filter
-                      if (filterBranch !== 'ALL') {
-                        const studentBranch = s.branch || '2관';
-                        if (studentBranch !== filterBranch) return false;
-                      }
-
-                      // Filter by Subject
-                      if (filterSubject !== 'ALL' && s.subject !== filterSubject) return false;
-
-                      // Filter by Teacher
-                      if (filterTeacher !== 'ALL' && s.teacher !== filterTeacher) return false;
-
-                      // 2. Search Filter
-                      if (searchQuery.trim().length > 0) {
-                        const q = searchQuery.toLowerCase();
-                        const name = s.name ? s.name.toLowerCase() : '';
-                        const pin = s.pinNumber ? String(s.pinNumber) : '';
-                        return name.includes(q) || pin.includes(q);
-                      }
-                      return true;
-                    })}
+                    data={filteredStudents}
                     renderItem={renderStudentItem}
                     keyExtractor={item => item.id}
                     contentContainerStyle={styles.listContainer}
+                    initialNumToRender={12}
+                    maxToRenderPerBatch={12}
+                    windowSize={7}
+                    removeClippedSubviews={true}
                     ListEmptyComponent={<View style={styles.emptyBox}><Text style={{ color: colors.mutedForeground }}>등록된 학생이 없습니다.</Text></View>}
                   />
                 </>

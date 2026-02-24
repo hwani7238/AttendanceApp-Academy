@@ -1,87 +1,122 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
-const FormData = require("form-data");
 
 admin.initializeApp();
 
 const db = admin.firestore();
 
-// Aligo API Configuration
-// TODO: Replace with actual credentials provided by the user
-const ALIGO_API_KEY = "YOUR_ALIGO_API_KEY";
-const ALIGO_USER_ID = "YOUR_ALIGO_USER_ID";
-const SENDER_NUMBER = "YOUR_SENDER_NUMBER"; // Must match Aligo registered number
-const ALIMTALK_TEMPLATE_CODE = "YOUR_TEMPLATE_CODE"; // Template code from Aligo
+// ==========================================
+// NHN Cloud 카카오톡 비즈메시지 API 설정 (TODO: 발급받은 키로 교체하세요)
+// ==========================================
+const NHN_APP_KEY = "YOUR_NHN_APP_KEY";           // 앱키
+const NHN_SECRET_KEY = "YOUR_NHN_SECRET_KEY";     // 시크릿 키 (X-Secret-Key)
+const NHN_SENDER_KEY = "YOUR_NHN_SENDER_KEY";     // 발신 프로필 키
+const NHN_TEMPLATE_CODE = "ATTENDANCE_LOC_V1"; // ⭐️ 등록하실 템플릿 코드 (작성하신 번호로 맞추세요)
 
 /**
- * Sends an Alimtalk via Aligo
- * @param {string} receiver Phone number of the receiver
- * @param {string} message Content of the message
- * @param {string} templateCode Alimtalk template code
+ * NHN Cloud API를 통해 알림톡을 발송합니다.
  */
-async function sendAlimtalk(receiver, message, templateCode) {
+async function sendNhnAlimtalk(receiver, templateParams) {
     try {
-        const form = new FormData();
-        form.append("key", ALIGO_API_KEY);
-        form.append("userid", ALIGO_USER_ID);
-        form.append("sender", SENDER_NUMBER);
-        form.append("receiver", receiver);
-        form.append("msg", message);
-        form.append("tpl_code", templateCode);
-        // Add other necessary fields for Aligo Alimtalk if required by their specific payload structure
-        // e.g., button settings, failed fallback message (subject_1, message_1), etc.
+        const url = `https://api-alimtalk.cloud.toast.com/alimtalk/v2.2/appkeys/${NHN_APP_KEY}/messages`;
 
-        // Fallback to SMS if Alimtalk fails (Optional configuration)
-        // form.append("failover", "Y");
-        // form.append("fsubject", "Attendance Notification");
-        // form.append("fmessage", message);
+        // 휴대폰 번호에서 숫자만 추출 (예: 010-1234-5678 -> 01012345678)
+        const cleanReceiverNo = receiver.replace(/[^0-9]/g, "");
 
-        const response = await axios.post("https://kakaoapi.aligo.in/akv10/alimtalk/send/", form, {
-            headers: form.getHeaders(),
+        const payload = {
+            "senderKey": NHN_SENDER_KEY,
+            "templateCode": NHN_TEMPLATE_CODE,
+            "recipientList": [
+                {
+                    "recipientNo": cleanReceiverNo,
+                    "templateParameter": templateParams
+                }
+            ]
+        };
+
+        const response = await axios.post(url, payload, {
+            headers: {
+                "X-Secret-Key": NHN_SECRET_KEY,
+                "Content-Type": "application/json;charset=UTF-8"
+            }
         });
 
-        console.log("Aligo Response:", response.data);
+        console.log("NHN Cloud Response:", response.data);
         return response.data;
     } catch (error) {
-        console.error("Error sending Alimtalk:", error);
+        console.error("Error sending NHN Alimtalk:");
+        // Axios 에러의 경우 response.data에 에러 상세가 들어있음
+        if (error.response) {
+            console.error(error.response.data);
+        } else {
+            console.error(error);
+        }
         throw error;
     }
 }
 
 exports.sendAttendanceNotification = functions.firestore
-    .document("attendance/{docId}") // Verifying collection name...
+    .document("attendance/{docId}")
     .onCreate(async (snap, context) => {
         const attendanceData = snap.data();
         const studentId = attendanceData.studentId;
         const studentName = attendanceData.name;
-        const status = attendanceData.status;
-
-        // TODO: Fetch parent's phone number from 'students' collection
-        // This assumes there is a 'students' collection with the student's details
-        let parentPhoneNumber = "";
+        const userId = attendanceData.userId;
+        const status = attendanceData.type || "출석"; // "출석"
 
         try {
-            // Example: Fetching student doc to get parent's phone number
-            // const studentDoc = await db.collection("students").doc(studentId).get();
-            // if (studentDoc.exists) {
-            //     parentPhoneNumber = studentDoc.data().parentPhoneNumber;
-            // }
+            // 1. 학원명 및 학원 연락처 가져오기 (users 컬렉션)
+            let academyName = "학원"; // 기본값
+            let academyContact = "전화번호 확인 요망"; // 학원 연락처 기본값
+            if (userId) {
+                const userDoc = await db.collection("users").doc(userId).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    if (userData.academyName) {
+                        academyName = userData.academyName;
+                    }
+                    if (userData.contact) {
+                        academyContact = userData.contact;
+                    } else if (userData.phoneNumber) {
+                        academyContact = userData.phoneNumber;
+                    }
+                }
+            }
 
-            // For now, logging until we confirm where the phone number is stored
-            console.log(`Processing attendance for: ${studentName}, Status: ${status}`);
+            // 2. 부모님(학생) 연락처 가져오기 (students 컬렉션)
+            let parentPhoneNumber = "";
+            const studentDoc = await db.collection("students").doc(studentId).get();
+            if (studentDoc.exists && studentDoc.data().contact) {
+                parentPhoneNumber = studentDoc.data().contact;
+            }
+
+            console.log(`Processing attendance for: ${studentName} (${parentPhoneNumber})`);
 
             if (!parentPhoneNumber) {
-                console.log("Parent phone number not found. Skipping notification.");
+                console.log("Contact phone number not found. Skipping notification.");
                 return;
             }
 
-            // Construct message based on template
-            // Note: The message content MUST match the registered template EXACTLY.
-            // Variables usually look like #{variable_name} in the template.
-            const message = `[Attendance Notification]\nStudent ${studentName} has marked attendance: ${status}.`;
+            // 3. 한국 시간으로 출석 시간 포맷팅
+            const date = attendanceData.timestamp ? attendanceData.timestamp.toDate() : new Date();
+            const koreanTime = new Intl.DateTimeFormat('ko-KR', {
+                timeZone: 'Asia/Seoul',
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            }).format(date);
 
-            await sendAlimtalk(parentPhoneNumber, message, ALIMTALK_TEMPLATE_CODE);
+            // 4. 알림톡 발송 (작성된 템플릿 변수에 완벽히 매핑)
+            // ⭐️ 주의: 매핑 키 이름은 반드시 NHN Cloud에 등록한 템플릿의 '#{변수명}'과 완벽히 일치해야 합니다.
+            // 템플릿: #{학원명}, #{학생명}, #{출석시간}, #{연락처}
+            const templateParams = {
+                "학원명": academyName,
+                "학생명": studentName,
+                "출석시간": koreanTime,
+                "연락처": academyContact
+            };
+
+            await sendNhnAlimtalk(parentPhoneNumber, templateParams);
 
         } catch (error) {
             console.error("Error processing attendance notification:", error);

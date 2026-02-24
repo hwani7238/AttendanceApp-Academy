@@ -34,10 +34,11 @@ export const ResponsiveLayout = ({ children, style }) => {
 
   // context가 없을 경우(App.js에서 Provider로 안 감싼 경우) 대비 안전장치
   const isMobile = context ? context.isStudentMode : true;
+  const isWeb = context ? context.isWeb : Platform.OS === 'web';
 
   return (
     <View style={[styles.background, style]}>
-      <View style={styles.webContainer}>
+      <View style={[styles.webContainer, isWeb && styles.webContainerWeb]}>
         {/* 👇 여기가 수정되었습니다! */}
         {/* 자식이 '함수'라면 실행해서 isMobile 값을 넘겨주고, 아니면 그냥 보여줍니다. */}
         {typeof children === 'function'
@@ -52,19 +53,25 @@ export const ResponsiveLayout = ({ children, style }) => {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    backgroundColor: '#f0f2f5', // 배경색을 살짝 회색으로 해서 컨텐츠 구분
-    alignItems: 'center',       // 가로 중앙 정렬
-    // justifyContent: 'center', // ❌ 제거: 세로 중앙 정렬은 리스트/스크롤 화면에서 내용을 잘리게 만듭니다.
+    backgroundColor: '#eef2f7',
+    alignItems: 'center',
   },
   webContainer: {
     width: '100%',
-    maxWidth: 1400,         // ⭕ 수정: 테이블 등을 위해 폭을 500 -> 800 -> 1400으로 넓힘
     flex: 1,
     backgroundColor: '#fff',
-    shadowColor: "#000",   // (선택) PC 웹에서 카드처럼 보이게 그림자 추가
+  },
+  webContainerWeb: {
+    maxWidth: 1320,
+    marginVertical: 14,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#dbe3ee',
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 6,
   },
 });
